@@ -1,0 +1,18 @@
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.env
+
+# Dependencies and Build Outputs
+node_modules/
+dist/
+build/
+coverage/
+*.log
