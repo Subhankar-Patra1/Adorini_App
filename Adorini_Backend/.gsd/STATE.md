@@ -2,41 +2,88 @@
 
 ## Current Position
 
-- **Phase**: 1 — Engine (Workspace & Environment) — ✅ **COMPLETE & VERIFIED on Node 24.12.0**
-- **Next**: Phase 2 — Data Model (PostgreSQL + TypeORM entities, migrations, seeds)
+- **Phase**: 2 — Data Model (PostgreSQL + TypeORM) — ✅ **COMPLETE & VERIFIED on Node 24.19.0 / PostgreSQL 18.4**
+- **Next**: Phase 3 — Integration Connectors (`src/providers/`)
 - **Active agent**: `@BE`
 - **Blockers**: none
 
-## Phase 1 — Verified Evidence
+## Phase 2 — Verified Evidence
 
-All re-verified on Node 24.12.0 / npm 11.6.2 after a clean `node_modules` reinstall.
+Verified against a live PostgreSQL 18.4 instance (Docker, `postgres:18.4`).
 
 | Exit criterion | Proof |
 | --- | --- |
-| App boots | `node dist/main.js` → "Nest application successfully started" |
-| Health endpoint | `GET /api/health` → `200` `{"status":"ok","timestamp":"..."}` |
-| Swagger UI renders | `GET /docs` → `200` |
-| OpenAPI contract generated | `GET /docs-json` → valid OpenAPI `3.0.0` document |
-| Refuses boot on bad config | `JWT_SECRET=tooshort DATABASE_URL=not-a-url` → aborts, naming **both** failures |
+| Migration runs up | `migration:run` → `InitialSchema1786403950398 has been executed successfully` — 15 tables, 19 FKs |
+| Migration runs down | `migration:revert` → reverted; `pg_tables` left only `migrations`, **zero orphaned enum types** |
+| Schema matches entities | `migration:generate --check` → `No changes in database schema were found` |
+| Seeds load | 5 categories, 4 brands (sana/mg/mm/NAVRANGA), 5 products, 45 variants |
+| Seeds are idempotent | Second `npm run seed` → identical row counts, no error (upsert on natural keys) |
+| **Risk #1 duplicate webhook rejected** | Integration test: second insert of `(CASHFREE, evt_…)` → `uq_processed_webhook_provider_event` violation; row count stays 1 |
+| **Risk #1 replay credits once** | 3 deliveries of one event → wallet `10000` paise, **1** ledger row (transaction rolls back on marker conflict) |
+| **Risk #4 indexes exist + usable** | All 3 present in `pg_indexes`; `EXPLAIN` with `enable_seqscan=off` picks `idx_products_category_price` |
+| **Risk #6 self-referral rejected** | `chk_referral_no_self_referral` violation |
+| **Risk #6 phone reuse rejected** | Delete account → re-signup same phone → `uq_referral_referee_phone` violation |
+| App boots with DB | `node dist/main.js` → "Nest application successfully started", TypeOrmCoreModule initialised |
+| Readiness probe real | Postgres stopped → `/api/health/ready` **503** `database: down`; restored → **200** |
+| Liveness independent | Postgres stopped → `/api/health` still **200** (no restart loop) |
 | TypeScript strict compiles | `npx tsc --noEmit` → clean |
-| Tests pass | `npx jest` → **18/18 passing**, 2 suites |
-| Engine matches spec | `npm install` → no `EBADENGINE` warning |
+| Tests pass | Unit **26/26** (3 suites, no DB) · Integration **18/18** (2 suites, live PG) |
+| No vulnerable deps | `npm audit` → **0 vulnerabilities** |
+
+## Schema Delivered
+
+15 entities in `src/database/entities/`, grouped:
+
+- **Identity**: `User`, `Address`
+- **Catalog**: `Category`, `Brand`, `Product`, `ProductVariant`, `MediaAsset`
+- **Trust/PDP**: `Review`, `SizeEnquiry`
+- **Commerce**: `Order`, `OrderItem`
+- **Money**: `Wallet`, `WalletTransaction`, `Referral`
+- **Integrity**: `ProcessedWebhook`
+
+Supporting: `data-source.ts` (CLI), `database.module.ts` (app), `naming.strategy.ts`,
+`common/enums/domain.enums.ts`, `common/schemas/size-rules.schema.ts`.
 
 ## Resolved Items
 
-- **Node runtime** (was: local v20.20.0 vs spec 24.x LTS). Node **24.12.0** was already installed under nvm-windows 1.2.2 but inactive. Switched via `nvm use 24.12.0`; `node_modules` deleted and reinstalled clean against the Node 24 ABI; full Phase 1 verification re-run and passing. Version pinned in `.nvmrc` (`24.12.0`) alongside the existing `engines.node >=24.0.0` in `package.json`.
-- **`src/modules/users/`** (was: missing from scaffold). Created with the same layout as sibling modules — `controllers/`, `services/`, `dto/`, each with a `.gitkeep`.
-- **`src/modules/whatsapp-bot/`** (was: present in scaffold, absent from approved docs). User decision (2026-08-10): **retain the directory as boilerplate only, write no logic.** Removed from the Phase 4 build list in ROADMAP.md and explicitly marked not-in-milestone. Deliberately *not* added to `final_project_context.md` — doing so requires explicit approval per the shared-memory update rule.
+- **Environment drift** (was: STATE claimed Node 24.12.0 verified). On resuming, the machine had Node **22.23.1**, nvm-windows was gone, `node_modules` was absent and no `.env` existed. Resolved by installing Node **24.19.0** LTS (`winget OpenJS.NodeJS.LTS`, user-approved); `.nvmrc` updated 24.12.0 → 24.19.0. Phase 1 re-verified green before Phase 2 began.
+- **STATE.md was stale on git** (claimed "nothing committed yet"). Phase 1 was in fact committed in `d1f8b53`; working tree was clean.
+- **js-yaml advisory** (high, DoS via `@nestjs/swagger` → js-yaml ≤5.2.1). `npm audit fix` had no non-breaking path; resolved with an `overrides` pin to `js-yaml@^5.2.3`. Now 0 vulnerabilities.
+- **`uuid_generate_v4()` in generated migration** — requires the `uuid-ossp` extension, which the migration never created, so it would fail on a fresh database. Set `uuidExtension: 'pgcrypto'` so TypeORM emits `gen_random_uuid()`, core in PostgreSQL 13+ and extension-free.
+- **Local ports 5432/6379 occupied** by an unrelated project's containers. Adorini's Postgres/Redis bound to **5433/6380** instead; reflected in `.env`.
+- **PostgreSQL 18 volume layout** — the data mount is `/var/lib/postgresql`, not `/var/lib/postgresql/data` as in ≤17. Container recreated accordingly.
 
 ## Context Notes
 
-- Two ADRs were forced by empirical failure during Phase 1, not chosen up front — see ADR-006 (ioredis 5 vs 6) and ADR-007 (Zod via `nestjs-zod`). Both are reflected back into `shared_memory/final_project_context.md`.
-- Nothing has been committed to git yet; Phase 1 exists as untracked working-tree changes.
+- **A test caught a real design flaw**: `Referral`'s user FKs were initially `ON DELETE CASCADE`, which deleted the referral row along with the account — taking the `referee_phone` claim with it and leaving the delete-and-re-signup abuse wide open despite the unique constraint. Changed to `ON DELETE SET NULL` (both user FKs now nullable) so the anti-abuse record outlives the accounts. See ADR-008.
+- **Retaining `referee_phone` after account deletion is deliberate** and is a data-minimisation trade-off. **Flagged for the @ETHICS gate** — a salted hash would preserve uniqueness while holding less personal data.
+- Integration tests are split from unit tests: `npm test` stays dependency-free (26 tests, no DB), `npm run test:integration` needs live Postgres (18 tests). `npm run test:all` runs both.
+- Full-text search (`tsvector` + GIN) was **not** added in Phase 2 — it belongs with the catalog module in Phase 4, as a dedicated migration.
+- Order state-machine *transition enforcement* is Phase 4; Phase 2 only fixes the vocabulary (`OrderStatus`) and the timestamp columns it writes.
+
+## Local Development Setup
+
+```bash
+docker run -d --name adorini-postgres -e POSTGRES_USER=adorini \
+  -e POSTGRES_PASSWORD=adorini_dev -e POSTGRES_DB=adorini \
+  -v adorini-pgdata:/var/lib/postgresql -p 5433:5432 postgres:18.4
+docker run -d --name adorini-redis -p 6380:6379 redis:8.6.2
+
+npm install && npm run migration:run && npm run seed
+```
+
+Integration tests use a separate `adorini_test` database (derived from `DATABASE_URL`, or set `TEST_DATABASE_URL`).
 
 ## Next Steps
 
-Execute Phase 2 — entities, migrations, seeds. Must carry:
+Execute Phase 3 — Integration Connectors in `src/providers/`:
 
-1. `processed_webhooks` UNIQUE constraint on `(webhook_provider, webhook_event_id)` — @GUARD Risk #1 (CRITICAL)
-2. Composite indexes on `(category_id, price)`, `(brand_id)`, `(fabric_type)` — @GUARD Risk #4
-3. `referrer_id != referee_id` + one-referral-per-phone constraints — @GUARD Risk #6
+1. `providers/redis/` — ioredis 5.4.x connection module (ADR-006)
+2. `providers/sms/` — MSG91 REST v5 (send OTP, verify OTP)
+3. `providers/payments/` — Cashfree SDK wrapper
+4. `providers/logistics/` — Delhivery REST client
+5. `providers/storage/` — Cloudflare R2 via `@aws-sdk/client-s3` v3
+6. `providers/oauth/` — Google OAuth 2.0 verification
+
+Each unit-tested against mocked HTTP, each failing loudly with a typed error rather than returning undefined.
+Real credentials replace the `placeholder-until-phase-3` values in `.env` at this point.

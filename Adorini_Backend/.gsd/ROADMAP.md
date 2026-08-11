@@ -1,6 +1,6 @@
 # ROADMAP.md — Adorini Backend
 
-> **Current Phase**: 2 (Phase 1 complete & verified)
+> **Current Phase**: 3 (Phases 1–2 complete & verified)
 > **Milestone**: Backend v1.0 (API-complete, pre-Flutter)
 > **Gate status**: @GUARD passed (`approval_status: true`) with 5 mitigations mandated below.
 
@@ -23,19 +23,21 @@
 
 ### Phase 2: Data Model — PostgreSQL + TypeORM
 
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete (verified — see STATE.md evidence table)
 **Objective**: The single source of truth — entities, relations, migrations, and realistic seed data.
-**Delivers**: Entities (`User`, `Product`, `ProductVariant`, `MediaAsset`, `Order`, `OrderItem`, `Review`, `SizeEnquiry`, `Wallet`, `ProcessedWebhook`), TypeORM datasource + migrations, seeds (garment categories, brands `sana`/`mg`/`mm`/`NAVRANGA`, stretch/rigid fit dimensions).
+**Delivered**: 15 entities (the 10 specified plus `Address`, `Category`, `Brand`, `WalletTransaction`, `Referral` — `Category`/`Brand` are required by the mandated seeds, `Referral` by Risk #6, `WalletTransaction` as the append-only ledger behind the wallet balance), TypeORM datasource + `InitialSchema` migration, idempotent seeds (5 categories, 4 brands, 5 products, 45 variants) with fabric-derived stretch/rigid size charts.
 **Carries @GUARD mitigations**:
 
 - **Risk #1 (CRITICAL)** — `processed_webhooks` table with a UNIQUE constraint on `(webhook_provider, webhook_event_id)`. The constraint is the guarantee; Redis is only a fast-path pre-check.
 - **Risk #4 (MEDIUM)** — composite indexes on `(category_id, price)`, `(brand_id)`, `(fabric_type)` for the filter rail.
-- **Risk #6 (LOW)** — DB-level `referrer_id != referee_id` check + one-referral-per-phone uniqueness.
-**Exit criteria**: Migrations run clean up and down; seeds load; inserting a duplicate `(provider, event_id)` raises a constraint violation (proven by test).
+- **Risk #6 (LOW)** — DB-level `referrer_id != referee_id` check + one-referral-per-phone uniqueness. ✅ Both present. Required changing the user FKs to `ON DELETE SET NULL`: under `CASCADE` the referral row died with the account and the phone claim went with it, so the uniqueness constraint did not actually close the delete-and-re-signup path (ADR-008).
+**Exit criteria**: ✅ All met — migrations run clean up and down (no orphaned enum types); seeds load and are idempotent; duplicate `(provider, event_id)` raises a constraint violation, proven by integration test.
+
+**Additional integrity constraints added beyond the mandate** (all test-proven): order totals must equal their own components and be non-negative (backstop for Risk #3), order line total must equal unit price × quantity, wallet balance and variant stock cannot go negative, wallet ledger sign must match transaction type, buyer media must have an uploader (protects the Official Media badge), nominal size confined to 40–48, PIN code format.
 
 ### Phase 3: Integration Connectors — `src/providers/`
 
-**Status**: ⬜ Not Started
+**Status**: ⬜ Not Started ← **next**
 **Objective**: Isolated, unit-testable wrappers for external services. No business logic lives here.
 **Delivers**:
 

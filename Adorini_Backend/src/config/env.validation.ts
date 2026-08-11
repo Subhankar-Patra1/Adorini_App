@@ -7,9 +7,7 @@ import { z } from 'zod';
  */
 export const envSchema = z.object({
   // ---- Core ----
-  NODE_ENV: z
-    .enum(['development', 'test', 'production'])
-    .default('development'),
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().default('api'),
 
@@ -24,9 +22,7 @@ export const envSchema = z.object({
   REDIS_URL: z.url({ error: 'REDIS_URL must be a valid connection URL' }),
 
   // ---- Auth ----
-  JWT_SECRET: z
-    .string()
-    .min(32, { error: 'JWT_SECRET must be at least 32 characters' }),
+  JWT_SECRET: z.string().min(32, { error: 'JWT_SECRET must be at least 32 characters' }),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),

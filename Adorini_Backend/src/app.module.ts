@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { HealthModule } from './common/health/health.module';
 import { validateEnv } from './config/env.validation';
+import { DatabaseModule } from './database/database.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { validateEnv } from './config/env.validation';
     // of it — direct-to-Railway requests bypass Cloudflare entirely.
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
 
+    DatabaseModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

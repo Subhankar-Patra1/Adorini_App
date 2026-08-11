@@ -58,6 +58,28 @@ NestJS's stock `ValidationPipe` requires `class-validator` + `class-transformer`
 
 **Consequence**: all DTOs from Phase 4 onward use `createZodDto(schema)`, never `class-validator` decorators.
 
+## ADR-008: Referral records outlive the accounts they reference
+
+**Date**: 2026-08-11 · **Status**: Accepted · **Forced by**: a failing integration test
+
+`Referral.referrer` and `Referral.referee` were initially `ON DELETE CASCADE`. The test for @GUARD Risk #6 — delete the account, sign up again on the same phone, attempt a second referral — **passed the insert**, because deleting the user cascaded the referral row away and took the `referee_phone` claim with it. The `uq_referral_referee_phone` constraint was real but had nothing left to conflict against.
+
+**Chosen**: both user FKs become `ON DELETE SET NULL`, with `referrer_id`/`referee_id` nullable. The referral is an anti-abuse and accounting record; it has to survive the accounts it references. `chk_referral_no_self_referral` still holds — `NULL <> NULL` is `NULL`, which a CHECK treats as satisfied, and a self-referral requires both columns populated and equal.
+
+**Rejected**: keeping `CASCADE` and documenting the weaker guarantee. The constraint was mandated specifically to stop this attack; leaving it decorative would be worse than not having it, because the risk register would record it as mitigated.
+
+**Consequence**: `referee_phone` is retained after account deletion. That is a deliberate trade of data minimisation for fraud prevention and is **flagged for the @ETHICS gate** — a salted hash would preserve the uniqueness property while holding less personal data. Phase 4 services must treat `referrerId`/`refereeId` as nullable and void a referral whose referrer is gone.
+
+## ADR-009: `gen_random_uuid()` via `uuidExtension: 'pgcrypto'`
+
+**Date**: 2026-08-11 · **Status**: Accepted · **Forced by**: an unrunnable generated migration
+
+TypeORM's default UUID primary key emits `uuid_generate_v4()`, which lives in the `uuid-ossp` extension — but the generated migration contains no `CREATE EXTENSION`, so it fails against a fresh database. Discovered by reading the generated SQL before running it.
+
+**Chosen**: set `uuidExtension: 'pgcrypto'` on both the CLI DataSource and the app's TypeORM options, which makes TypeORM emit `gen_random_uuid()`. That function has been core PostgreSQL since 13, so it needs no extension and no superuser rights at deploy time — relevant on Railway, where extension privileges are not guaranteed.
+
+**Rejected**: adding `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` to the migration — it needs superuser rights and buys nothing over a core function.
+
 ## ADR-005: Backend-first build, Flutter integrates after
 
 **Date**: 2026-08-10 · **Status**: Accepted

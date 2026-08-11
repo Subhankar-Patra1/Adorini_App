@@ -48,9 +48,7 @@ describe('validateEnv', () => {
   });
 
   it('rejects a malformed DATABASE_URL', () => {
-    expect(() => validateEnv({ ...validEnv, DATABASE_URL: 'not-a-url' })).toThrow(
-      /DATABASE_URL/,
-    );
+    expect(() => validateEnv({ ...validEnv, DATABASE_URL: 'not-a-url' })).toThrow(/DATABASE_URL/);
   });
 
   it.each([
@@ -70,15 +68,15 @@ describe('validateEnv', () => {
   });
 
   it('reports every invalid field at once, not just the first', () => {
-    expect(() =>
-      validateEnv({ ...validEnv, JWT_SECRET: 'short', DATABASE_URL: 'nope' }),
-    ).toThrow(/JWT_SECRET[\s\S]*DATABASE_URL|DATABASE_URL[\s\S]*JWT_SECRET/);
+    expect(() => validateEnv({ ...validEnv, JWT_SECRET: 'short', DATABASE_URL: 'nope' })).toThrow(
+      /JWT_SECRET[\s\S]*DATABASE_URL|DATABASE_URL[\s\S]*JWT_SECRET/,
+    );
   });
 
   it('rejects an out-of-range discount percentage', () => {
-    expect(() =>
-      validateEnv({ ...validEnv, FIRST_ORDER_DISCOUNT_PERCENT: '150' }),
-    ).toThrow(/FIRST_ORDER_DISCOUNT_PERCENT/);
+    expect(() => validateEnv({ ...validEnv, FIRST_ORDER_DISCOUNT_PERCENT: '150' })).toThrow(
+      /FIRST_ORDER_DISCOUNT_PERCENT/,
+    );
   });
 
   it('coerces numeric strings to numbers', () => {
