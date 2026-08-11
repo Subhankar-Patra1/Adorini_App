@@ -45,6 +45,36 @@ const CATEGORIES = [
     displayOrder: 5,
     description: 'Cotton and satin petticoats.',
   },
+  {
+    slug: 'leggings',
+    name: 'Leggings',
+    displayOrder: 6,
+    description: 'Ankle-length leggings in cotton and stretch blends.',
+  },
+  {
+    slug: 'palazzos',
+    name: 'Palazzos',
+    displayOrder: 7,
+    description: 'Wide-leg flowy palazzo pants.',
+  },
+  {
+    slug: 'straight-pencil-pants',
+    name: 'Straight/Pencil Pants',
+    displayOrder: 8,
+    description: 'Straight-fit and pencil-fit bottoms.',
+  },
+  {
+    slug: 'one-piece',
+    name: 'One-Piece',
+    displayOrder: 9,
+    description: 'Single-piece dresses and gowns.',
+  },
+  {
+    slug: 'kaftaans',
+    name: 'Kaftaans',
+    displayOrder: 10,
+    description: 'Loose-fit flowy kaftaans.',
+  },
 ];
 
 const BRANDS = [

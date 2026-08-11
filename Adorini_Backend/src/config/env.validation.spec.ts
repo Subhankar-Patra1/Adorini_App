@@ -16,6 +16,8 @@ const validEnv: Record<string, string> = {
   CASHFREE_SECRET_KEY: 'secret',
   CASHFREE_WEBHOOK_SECRET: 'webhook-secret',
   DELHIVERY_API_TOKEN: 'token',
+  DELHIVERY_WEBHOOK_TOKEN: 'd'.repeat(24),
+  MSG91_WEBHOOK_TOKEN: 'm'.repeat(24),
   R2_ACCOUNT_ID: 'account',
   R2_ACCESS_KEY_ID: 'access-key',
   R2_SECRET_ACCESS_KEY: 'secret-key',
@@ -58,6 +60,13 @@ describe('validateEnv', () => {
     );
   });
 
+  it.each(['DELHIVERY_WEBHOOK_TOKEN', 'MSG91_WEBHOOK_TOKEN'])(
+    'rejects a %s shorter than 24 characters',
+    (key) => {
+      expect(() => validateEnv({ ...validEnv, [key]: 'too-short' })).toThrow(new RegExp(key));
+    },
+  );
+
   it('rejects a malformed DATABASE_URL', () => {
     expect(() => validateEnv({ ...validEnv, DATABASE_URL: 'not-a-url' })).toThrow(/DATABASE_URL/);
   });
@@ -70,6 +79,8 @@ describe('validateEnv', () => {
     'CASHFREE_SECRET_KEY',
     'CASHFREE_WEBHOOK_SECRET',
     'DELHIVERY_API_TOKEN',
+    'DELHIVERY_WEBHOOK_TOKEN',
+    'MSG91_WEBHOOK_TOKEN',
     'R2_SECRET_ACCESS_KEY',
   ])('refuses to boot when required secret %s is missing', (key) => {
     const incomplete = { ...validEnv };

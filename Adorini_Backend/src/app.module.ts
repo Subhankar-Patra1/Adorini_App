@@ -6,6 +6,9 @@ import { APP_GUARD } from '@nestjs/core';
 import { HealthModule } from './common/health/health.module';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
+import { PdpModule } from './modules/pdp/pdp.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { DatabaseModule } from './database/database.module';
 
     DatabaseModule,
     HealthModule,
+    CatalogModule,
+    PdpModule,
+    WebhooksModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

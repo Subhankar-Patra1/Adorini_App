@@ -48,6 +48,22 @@ export const envSchema = z.object({
   DELHIVERY_API_TOKEN: z.string().min(1),
   DELHIVERY_BASE_URL: z.url().default('https://track.delhivery.com'),
 
+  /**
+   * Shared secrets for the inbound Delhivery and MSG91 webhook endpoints.
+   *
+   * Neither provider signs its callbacks the way Cashfree does (HMAC over the
+   * raw body), so a bearer token we generate and register in their dashboards is
+   * the available authentication. These endpoints move order state and trigger
+   * wallet credits, so leaving them open is not an option — hence required, and
+   * long enough that guessing is not a strategy.
+   */
+  DELHIVERY_WEBHOOK_TOKEN: z
+    .string()
+    .min(24, { error: 'DELHIVERY_WEBHOOK_TOKEN must be at least 24 characters' }),
+  MSG91_WEBHOOK_TOKEN: z
+    .string()
+    .min(24, { error: 'MSG91_WEBHOOK_TOKEN must be at least 24 characters' }),
+
   // ---- Cloudflare R2 (S3-compatible — see ADR-003) ----
   R2_ACCOUNT_ID: z.string().min(1),
   R2_ACCESS_KEY_ID: z.string().min(1),

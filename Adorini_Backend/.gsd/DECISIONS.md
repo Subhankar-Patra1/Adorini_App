@@ -87,3 +87,37 @@ TypeORM's default UUID primary key emits `uuid_generate_v4()`, which lives in th
 Deviates from the MAS pipeline's parallel `@FE + @BE`. Accepted because NestJS auto-generates OpenAPI/Swagger from controllers + DTOs, so the contract is live and testable before any client exists, and the UI design spec is already locked.
 
 **Mitigation for the deferred-integration risk**: each module is verified against its own Swagger doc at completion — response shapes checked against the known screen requirements module-by-module, not deferred to one end-of-build integration pass.
+
+## ADR-010: Cursor-based pagination for the catalog, and full-text search via a dedicated migration
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+The PRD specifies "infinite scroll" for the catalog grid but never picks cursor vs. offset pagination, and STATE.md flagged full-text search as explicitly deferred out of the Phase 2 `InitialSchema` migration into Phase 4.
+
+**Chosen — pagination**: opaque seek cursors (base64url of `{sortValue, id}`), decoded in `CatalogService` against whichever indexed column the active sort mode orders by (`created_at` for `newest`, `price_paise` for `price_asc`/`price_desc`), with `product.id` as a tie-breaker. Offset/`LIMIT..OFFSET` was rejected: a product inserted, deactivated, or repriced between two scroll requests shifts every row after it, so an offset-paginated feed would skip or repeat items mid-scroll — exactly what infinite scroll is supposed to hide from the user.
+
+**Chosen — search**: a new migration (`AddProductSearchVector`) adds a `products.search_vector` tsvector column maintained by a `BEFORE INSERT OR UPDATE` trigger (not application code, so it can never drift from `name`/`description`), backed by a GIN index. Queried via `plainto_tsquery('english', :q)`, which is injection-safe (parameterised) and forgiving of raw user input (no tsquery syntax to escape), rather than `to_tsquery` (rejects malformed operator syntax) or a slow `ILIKE '%...%'` scan.
+
+**Consequence (catalog)**: `search_vector` is intentionally absent from the `Product` entity — it is written by the trigger and read only via raw SQL in `CatalogService`, so there is nothing for TypeORM to hydrate and no risk of the ORM writing a stale value over it.
+
+## ADR-011: Shared-secret auth for Delhivery and MSG91 webhooks
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Cashfree signs its callbacks (HMAC-SHA256 over `timestamp + rawBody`), and `PaymentsService.verifyWebhookSignature` already checks it. Delhivery and MSG91 do not sign at all — but their endpoints move order state and trigger a ₹100 wallet credit, so leaving them unauthenticated was not an option.
+
+**Chosen**: a shared secret we generate and register in each provider's dashboard, returned in an `x-adorini-webhook-token` header and compared with `crypto.timingSafeEqual`. Two new required env vars, `DELHIVERY_WEBHOOK_TOKEN` and `MSG91_WEBHOOK_TOKEN`, both min 24 chars. Constant-time comparison specifically because these routes are `@SkipThrottle()` — a plain `!==` on an unthrottled endpoint leaks the secret a byte at a time through response timing.
+
+**Rejected**: IP allow-listing alone (Cloudflare sits in front, and courier egress ranges change without notice); no auth with "the payload is unguessable" reasoning (waybill numbers are printed on parcels).
+
+**Consequence**: `NestFactory.create` now sets `rawBody: true`, because Cashfree signs the exact bytes sent and verifying against a re-serialised body fails on any key-order difference.
+
+## ADR-012: Webhooks answer 2xx for duplicates, unmatched entities, and no-op events
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+All three providers redeliver on any non-2xx. An error response for "already processed" or "no order matches this waybill" therefore buys an indefinite retry loop against a condition retrying cannot fix.
+
+**Chosen**: authenticated requests return `200` with an `outcome` discriminator — `processed`, `duplicate`, `ignored` (recorded, no action for this event type), or `unmatched` (no local entity; payload retained for reconciliation). Only genuine faults are non-2xx: `401` for bad signature/token, `400` for an unparseable payload, and `409` for an **illegal state transition**, which SPEC requires be rejected rather than silently ignored — that one *should* retry after a human looks at it, and its marker row rolls back with the transaction so a corrected redelivery can still apply.
+
+**Consequence**: a repeat of the *current* status is a no-op rather than an error (`TransitionResult.changed === false`). Couriers emit several scans with the same status, and treating those as illegal would turn routine tracking noise into failed webhooks. The referral payout is gated on `changed`, so only the transition that actually delivered the order can pay out.

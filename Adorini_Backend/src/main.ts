@@ -10,7 +10,15 @@ import { AppModule } from './app.module';
 import type { Env } from './config/env.validation';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  /**
+   * `rawBody` retains the unparsed request body alongside the parsed one.
+   *
+   * Cashfree signs the exact bytes it sent, so verifying against a
+   * re-serialised `JSON.stringify(body)` fails on any key-order or whitespace
+   * difference — and a webhook verifier that fails intermittently is worse than
+   * none, because the retries look like an outage.
+   */
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   const config = app.get(ConfigService<Env, true>);
   const logger = new Logger('Bootstrap');
 
