@@ -32,7 +32,7 @@ Cloudflare R2 for media ($0.015/GB-month, **$0 egress**) vs S3 (~$0.09/GB egress
 
 **Date**: 2026-08-10 · **Status**: Accepted
 
-MSG91's npm ecosystem (`msg91`, `msg91-sdk`, `@msg91comm/otp`, `sendotp`) is a set of thin, inconsistently-maintained community wrappers with no clear official choice; Delhivery publishes no SDK. Both are called via thin internal providers over REST — equivalent effort, no unmaintained-dependency risk. Cashfree does publish an official maintained SDK (`@cashfreepayments/cashfree-sdk`), so use it.
+MSG91's npm ecosystem (`msg91`, `msg91-sdk`, `@msg91comm/otp`, `sendotp`) is a set of thin, inconsistently-maintained community wrappers with no clear official choice; Delhivery publishes no SDK. Both are called via thin internal providers over REST — equivalent effort, no unmaintained-dependency risk. For Cashfree, `@cashfreepayments/cashfree-sdk` is deprecated and targets legacy endpoints; use official `cashfree-pg` (v6.0.4+).
 
 ## ADR-006: ioredis 5.x, not 6.x
 

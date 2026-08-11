@@ -18,7 +18,7 @@ export const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
-  // ---- Redis (8.6.2 on Railway, ioredis 6 client) ----
+  // ---- Redis (8.6.2 on Railway, ioredis 5 client — see ADR-006) ----
   REDIS_URL: z.url({ error: 'REDIS_URL must be a valid connection URL' }),
 
   // ---- Auth ----
@@ -26,13 +26,19 @@ export const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
   GOOGLE_OAUTH_CLIENT_ID: z.string().min(1),
+  // Optional comma-separated list of additional Google OAuth client IDs
+  // (Android, iOS) whose tokens the backend should also accept.
+  GOOGLE_OAUTH_MOBILE_CLIENT_IDS: z
+    .string()
+    .default('')
+    .transform((v) => (v ? v.split(',').map((id) => id.trim()).filter(Boolean) : [])),
 
   // ---- MSG91 (direct REST v5 — see ADR-004) ----
   MSG91_AUTH_KEY: z.string().min(1),
   MSG91_OTP_TEMPLATE_ID: z.string().min(1),
   MSG91_SENDER_ID: z.string().min(1),
 
-  // ---- Cashfree (official SDK) ----
+  // ---- Cashfree (cashfree-pg SDK — see ADR-004) ----
   CASHFREE_APP_ID: z.string().min(1),
   CASHFREE_SECRET_KEY: z.string().min(1),
   CASHFREE_ENV: z.enum(['SANDBOX', 'PRODUCTION']).default('SANDBOX'),

@@ -39,6 +39,17 @@ describe('validateEnv', () => {
     expect(env.FREE_DELIVERY_THRESHOLD_PAISE).toBe(300_000); // ₹3,000
     expect(env.REFERRAL_CREDIT_PAISE).toBe(10_000); // ₹100
     expect(env.FIRST_ORDER_DISCOUNT_PERCENT).toBe(10);
+    // Mobile OAuth client IDs default to an empty array when omitted.
+    expect(env.GOOGLE_OAUTH_MOBILE_CLIENT_IDS).toEqual([]);
+  });
+
+  it('parses GOOGLE_OAUTH_MOBILE_CLIENT_IDS into a trimmed array', () => {
+    const env = validateEnv({
+      ...validEnv,
+      GOOGLE_OAUTH_MOBILE_CLIENT_IDS: 'android-id , ios-id ,  web2-id',
+    });
+
+    expect(env.GOOGLE_OAUTH_MOBILE_CLIENT_IDS).toEqual(['android-id', 'ios-id', 'web2-id']);
   });
 
   it('rejects a JWT_SECRET shorter than 32 characters', () => {
