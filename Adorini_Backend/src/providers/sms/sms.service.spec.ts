@@ -1,10 +1,35 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test, type TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+
 import { SmsService, SmsProviderError } from './sms.service';
 
 describe('SmsService', () => {
   let service: SmsService;
   const globalFetchBackup = global.fetch;
+
+  const config = {
+    MSG91_AUTH_KEY: 'test_auth_key',
+    MSG91_OTP_TEMPLATE_ID: 'test_template_id',
+    MSG91_SENDER_ID: 'ADORNI',
+    MSG91_WHATSAPP_NUMBER: '919000000000',
+  } as const;
+
+  function mockFetchOnce(response: {
+    ok: boolean;
+    status?: number;
+    json?: unknown;
+    text?: string;
+  }): void {
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: response.ok,
+      status: response.status ?? (response.ok ? 200 : 500),
+      json: () =>
+        response.json === undefined
+          ? Promise.reject(new Error('not json'))
+          : Promise.resolve(response.json),
+      text: () => Promise.resolve(response.text ?? ''),
+    });
+  }
 
   beforeEach(async () => {
     global.fetch = jest.fn();
@@ -15,18 +40,7 @@ describe('SmsService', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string) => {
-              switch (key) {
-                case 'MSG91_AUTH_KEY':
-                  return 'test_auth_key';
-                case 'MSG91_OTP_TEMPLATE_ID':
-                  return 'test_template_id';
-                case 'MSG91_SENDER_ID':
-                  return 'ADORNI';
-                default:
-                  return '';
-              }
-            }),
+            get: jest.fn((key: keyof typeof config) => config[key] ?? ''),
           },
         },
       ],
@@ -44,43 +58,118 @@ describe('SmsService', () => {
   });
 
   describe('sendOtp', () => {
-    it('should call MSG91 OTP endpoint and succeed', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ type: 'success', message: 'OTP sent' }),
-      });
+    it('calls the MSG91 OTP endpoint with the auth key and a deadline', async () => {
+      mockFetchOnce({ ok: true, json: { type: 'success', message: 'OTP sent' } });
 
-      await expect(service.sendOtp('919999999999', '123456')).resolves.not.toThrow();
+      await expect(service.sendOtp('919999999999', '123456')).resolves.toBeUndefined();
 
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('https://control.msg91.com/api/v5/otp/request'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({ authkey: 'test_auth_key' }),
-        }),
-      );
+      const [url, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+
+      expect(url).toContain('https://control.msg91.com/api/v5/otp');
+      expect(init.method).toBe('POST');
+      expect((init.headers as Record<string, string>).authkey).toBe('test_auth_key');
+      // No deadline means a stalled MSG91 hangs a checkout indefinitely.
+      expect(init.signal).toBeDefined();
     });
 
-    it('should throw SmsProviderError on non-ok HTTP response', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal Server Error',
-      });
+    it('throws on a non-ok HTTP response', async () => {
+      mockFetchOnce({ ok: false, status: 500, text: 'Internal Server Error' });
 
       await expect(service.sendOtp('919999999999')).rejects.toThrow(SmsProviderError);
+    });
+
+    it('throws when MSG91 reports an error inside a 200 response', async () => {
+      // MSG91 signals unapproved templates and blocked numbers this way. A 2xx
+      // alone is not proof the OTP was sent.
+      mockFetchOnce({
+        ok: true,
+        json: { type: 'error', message: 'template not approved' },
+      });
+
+      await expect(service.sendOtp('919999999999')).rejects.toThrow(/template not approved/);
+    });
+
+    it('surfaces a timeout as SmsProviderError, not a raw abort', async () => {
+      const timeoutError = new Error('The operation was aborted due to timeout');
+      timeoutError.name = 'TimeoutError';
+      (global.fetch as jest.Mock).mockRejectedValue(timeoutError);
+
+      const error = (await service
+        .sendOtp('919999999999')
+        .catch((e: unknown) => e)) as SmsProviderError;
+
+      expect(error).toBeInstanceOf(SmsProviderError);
+      expect(error.message).toMatch(/timed out/i);
     });
   });
 
   describe('verifyOtp', () => {
-    it('should return true when MSG91 returns success', async () => {
-      (global.fetch as jest.Mock).mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ type: 'success', message: 'OTP verified' }),
+    it('returns true when MSG91 confirms the code', async () => {
+      mockFetchOnce({ ok: true, json: { type: 'success', message: 'OTP verified' } });
+
+      await expect(service.verifyOtp('919999999999', '123456')).resolves.toBe(true);
+    });
+
+    it('returns false — does NOT throw — when the code is wrong', async () => {
+      // The distinction this test protects: MSG91 answers a bad code with 4xx.
+      // If that threw, every mistyped digit would look like an outage to the
+      // auth module, and a real outage would be indistinguishable from a user
+      // fat-fingering their OTP.
+      mockFetchOnce({
+        ok: false,
+        status: 400,
+        json: { type: 'error', message: 'OTP not match' },
       });
 
-      const result = await service.verifyOtp('919999999999', '123456');
-      expect(result).toBe(true);
+      await expect(service.verifyOtp('919999999999', '000000')).resolves.toBe(false);
+    });
+
+    it('returns false when the code has expired', async () => {
+      mockFetchOnce({
+        ok: false,
+        status: 400,
+        json: { type: 'error', message: 'OTP expired' },
+      });
+
+      await expect(service.verifyOtp('919999999999', '123456')).resolves.toBe(false);
+    });
+
+    it('throws when MSG91 itself is broken (5xx)', async () => {
+      // An outage is our problem, not the buyer's — it must not be reported as
+      // "wrong code", which would tell them to retype a correct OTP forever.
+      mockFetchOnce({ ok: false, status: 503, json: { message: 'service unavailable' } });
+
+      await expect(service.verifyOtp('919999999999', '123456')).rejects.toThrow(SmsProviderError);
+    });
+
+    it('throws when MSG91 is unreachable', async () => {
+      (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      await expect(service.verifyOtp('919999999999', '123456')).rejects.toThrow(SmsProviderError);
+    });
+  });
+
+  describe('whatsappNotify', () => {
+    it('sends the WhatsApp business number, not the SMS sender ID', async () => {
+      mockFetchOnce({ ok: true, json: { type: 'success' } });
+
+      await service.whatsappNotify('919999999999', 'order_confirmed', { body_1: 'ADR-1' });
+
+      const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const payload = JSON.parse(init.body as string) as { integrated_number: string };
+
+      // These are different identifiers on different channels. Passing the DLT
+      // sender header here fails only against a live account.
+      expect(payload.integrated_number).toBe('919000000000');
+      expect(payload.integrated_number).not.toBe('ADORNI');
+    });
+
+    it('throws on a non-ok response', async () => {
+      mockFetchOnce({ ok: false, status: 400, text: 'bad template' });
+
+      await expect(service.whatsappNotify('919999999999', 'nope', {})).rejects.toThrow(
+        SmsProviderError,
+      );
     });
   });
 });

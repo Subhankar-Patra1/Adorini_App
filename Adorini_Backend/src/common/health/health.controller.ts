@@ -8,6 +8,8 @@ import {
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 
+import { Public } from '../decorators/public.decorator';
+
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
@@ -23,6 +25,7 @@ export class HealthController {
    * recoverable incident into an outage.
    */
   @Get()
+  @Public()
   @SkipThrottle()
   @ApiOperation({ summary: 'Liveness probe' })
   check(): { status: string; timestamp: string } {
@@ -36,6 +39,7 @@ export class HealthController {
    * database outage drains traffic without restart-looping the app.
    */
   @Get('ready')
+  @Public()
   @SkipThrottle()
   @HealthCheck()
   @ApiOperation({ summary: 'Readiness probe — verifies database connectivity' })

@@ -1,6 +1,6 @@
 # ROADMAP.md — Adorini Backend
 
-> **Current Phase**: 3 (Phases 1–2 complete & verified)
+> **Current Phase**: 4 (Phases 1–3 complete & verified; Phase 4 in progress — `auth` + `users` done)
 > **Milestone**: Backend v1.0 (API-complete, pre-Flutter)
 > **Gate status**: @GUARD passed (`approval_status: true`) with 5 mitigations mandated below.
 
@@ -37,7 +37,7 @@
 
 ### Phase 3: Integration Connectors — `src/providers/`
 
-**Status**: ⬜ Not Started ← **next**
+**Status**: ✅ Complete (verified — see STATE.md evidence table)
 **Objective**: Isolated, unit-testable wrappers for external services. No business logic lives here.
 **Delivers**:
 
@@ -49,15 +49,29 @@
 - `providers/oauth/` — Google OAuth 2.0 verification
 **Exit criteria**: Each provider unit-tested against mocked HTTP; each fails loudly (typed error) on upstream failure rather than returning undefined.
 
+**Audit + completion (2026-08-12)**: all gaps closed.
+
+- [x] All 6 providers have typed error classes with tested failure paths (was 5/6 — `redis` had none).
+- [x] Every outbound call carries a deadline — `fetchWithTimeout` / `AbortSignal.timeout()`, R2 via `NodeHttpHandler` (ADR-011).
+- [x] `axios` clarified: **not** an unused dependency but an npm override lifting `cashfree-pg`'s exact `1.15.0` pin (ADR-010). Retained and documented.
+- [x] Lint clean; all `Promise<any>` returns replaced with real interfaces.
+- [x] DI wiring proven — `providers.wiring.integration.spec.ts` compiles all 6 modules under the real `ConfigModule`.
+
+**Six real bugs fixed** (detail in STATE.md): `verifyOtp` threw on a wrong OTP instead of returning false; WhatsApp used the SMS sender ID as the phone number; webhook signatures compared with timing-unsafe `===`; paise→rupee float conversion; Google `aud` check skipped when the claim was absent; Delhivery `success: false` inside HTTP 200 treated as success.
+
+**Tests**: 114 unit (mocked HTTP, no network) + 25 integration. `tsc` clean, lint clean, 0 vulnerabilities.
+
+**Deferred to the credential smoke test**: MSG91 v5 OTP endpoint paths are unverified against a live account and are flagged with a `NOTE` in `sms.service.ts`.
+
 ### Phase 4: Feature Modules — `src/modules/`
 
-**Status**: ⬜ Not Started
+**Status**: 🔄 In progress — `auth` + `users` ✅ complete & verified (see STATE.md)
 **Objective**: Domain logic, module by module. Each module = controller + DTOs (Zod) + service, verified via Swagger before moving on.
 **Build order** (dependency-driven):
 
-1. `auth` — phone OTP request/verify, Google OAuth, JWT issue/refresh
-2. `users` — profile, address CRUD *(note: directory missing from scaffold — create it)*
-3. `catalog` — search, filters (price/size/brand/print), infinite scroll pagination
+1. ✅ `auth` — phone OTP request/verify, Google two-step signup (ADR-012), rotating JWTs with reuse detection, referral capture. Plus the shared foundations every later module inherits: global fail-closed `JwtAuthGuard` (ADR-013), `@Public()`, `@CurrentUser()`, and the global exception filter.
+2. ✅ `users` — profile, referral code/list, address CRUD with default-address exclusivity and 404-not-403 ownership scoping
+3. `catalog` — search, filters (price/size/brand/print), infinite scroll pagination ← **next**. Browsing is public: every route needs `@Public()`. Full-text search (`tsvector` + GIN), deferred from Phase 2, belongs here.
 4. `pdp` — media gallery w/ `ADMIN`|`BUYER` provenance, dynamic fabric size chart, reviews + fit tags, custom-size enquiry
 5. `cart` — inline qty/size/colour edit, Redis session + Postgres sync
 6. `checkout` — address validation, Cashfree session, COD OTP verification

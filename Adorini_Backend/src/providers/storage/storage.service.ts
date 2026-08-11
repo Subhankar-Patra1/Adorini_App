@@ -7,8 +7,18 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 
 import type { Env } from '../../config/env.validation';
+
+/**
+ * R2 uploads happen while a request waits (admin product media, buyer review
+ * photos), so the SDK must not be allowed to hang. The AWS SDK's own default is
+ * effectively no request timeout, which would let a stalled R2 connection pin a
+ * request indefinitely.
+ */
+const R2_CONNECTION_TIMEOUT_MS = 5_000;
+const R2_REQUEST_TIMEOUT_MS = 20_000;
 
 export class StorageProviderError extends Error {
   constructor(
@@ -42,6 +52,14 @@ export class StorageService {
         accessKeyId,
         secretAccessKey,
       },
+      requestHandler: new NodeHttpHandler({
+        connectionTimeout: R2_CONNECTION_TIMEOUT_MS,
+        requestTimeout: R2_REQUEST_TIMEOUT_MS,
+      }),
+      // Two attempts total. R2 writes here are not idempotent from the
+      // caller's perspective, and the SDK's default of 3 turns a slow upload
+      // into three concurrent slow uploads.
+      maxAttempts: 2,
     });
   }
 

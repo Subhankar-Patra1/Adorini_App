@@ -39,6 +39,7 @@
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.3.0",
     "@nestjs/typeorm": "^11.0.0",
+    "@smithy/node-http-handler": "^4.10.0",
     "cashfree-pg": "^6.0.4",
     "dotenv": "^17.4.2",
     "helmet": "^8.0.0",

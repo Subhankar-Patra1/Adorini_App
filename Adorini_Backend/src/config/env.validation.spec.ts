@@ -12,6 +12,7 @@ const validEnv: Record<string, string> = {
   MSG91_AUTH_KEY: 'key',
   MSG91_OTP_TEMPLATE_ID: 'template',
   MSG91_SENDER_ID: 'sender',
+  MSG91_WHATSAPP_NUMBER: '919000000000',
   CASHFREE_APP_ID: 'app',
   CASHFREE_SECRET_KEY: 'secret',
   CASHFREE_WEBHOOK_SECRET: 'webhook-secret',
@@ -28,6 +29,89 @@ const validEnv: Record<string, string> = {
 describe('validateEnv', () => {
   it('accepts a complete valid environment', () => {
     expect(() => validateEnv(validEnv)).not.toThrow();
+  });
+
+  describe('production placeholder guard', () => {
+    /**
+     * Motivated by a live finding: MSG91's OTP endpoint returns HTTP 200
+     * `{"type":"success"}` even for a completely invalid auth key and template
+     * id. A misconfigured SMS integration is therefore undetectable from its
+     * own responses — it just silently delivers nothing.
+     *
+     * Since the provider will not report the problem, the only place to catch
+     * it is before we ever call it. These tests are the guard that a broken
+     * deployment cannot start.
+     */
+    const productionEnv = { ...validEnv, NODE_ENV: 'production' };
+
+    it('refuses to start in production with a placeholder secret', () => {
+      expect(() =>
+        validateEnv({ ...productionEnv, MSG91_AUTH_KEY: 'placeholder-until-phase-3' }),
+      ).toThrow(/placeholder credentials/i);
+    });
+
+    it('names every offending variable, not just the first', () => {
+      // Fixing them one deploy at a time would be miserable.
+      const error = (() => {
+        try {
+          validateEnv({
+            ...productionEnv,
+            MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+            CASHFREE_SECRET_KEY: 'placeholder-until-phase-3',
+            R2_ACCESS_KEY_ID: 'CHANGE_ME',
+          });
+          return null;
+        } catch (e) {
+          return e as Error;
+        }
+      })();
+
+      expect(error?.message).toContain('MSG91_AUTH_KEY');
+      expect(error?.message).toContain('CASHFREE_SECRET_KEY');
+      expect(error?.message).toContain('R2_ACCESS_KEY_ID');
+    });
+
+    it.each([
+      'placeholder-until-phase-3',
+      'PLACEHOLDER',
+      'change-me',
+      'CHANGE_ME',
+      'replace-with-a-real-key',
+      'your-key-here',
+      'TODO',
+      'xxxxxx',
+      'test-secret',
+    ])('rejects %s as an obvious placeholder', (value) => {
+      expect(() => validateEnv({ ...productionEnv, DELHIVERY_API_TOKEN: value })).toThrow(
+        /placeholder credentials/i,
+      );
+    });
+
+    it('accepts credentials that merely look unusual', () => {
+      // The guard must not reject real keys. False positives here mean a
+      // legitimate deploy is blocked, which is its own outage.
+      expect(() =>
+        validateEnv({
+          ...productionEnv,
+          MSG91_AUTH_KEY: '412345AbCdEfGh1234567890',
+          DELHIVERY_API_TOKEN: 'a1b2c3d4e5f6',
+          CASHFREE_APP_ID: 'TEST10000000abcdef',
+        }),
+      ).not.toThrow();
+    });
+
+    it('leaves development and test alone', () => {
+      // The whole suite runs on placeholders; demanding real credentials to run
+      // tests would mean nobody runs them.
+      const placeholders = {
+        ...validEnv,
+        MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+        CASHFREE_SECRET_KEY: 'placeholder-until-phase-3',
+      };
+
+      expect(() => validateEnv({ ...placeholders, NODE_ENV: 'development' })).not.toThrow();
+      expect(() => validateEnv({ ...placeholders, NODE_ENV: 'test' })).not.toThrow();
+    });
   });
 
   it('applies documented defaults when optional values are omitted', () => {

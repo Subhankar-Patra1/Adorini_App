@@ -31,12 +31,48 @@ export const envSchema = z.object({
   GOOGLE_OAUTH_MOBILE_CLIENT_IDS: z
     .string()
     .default('')
-    .transform((v) => (v ? v.split(',').map((id) => id.trim()).filter(Boolean) : [])),
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((id) => id.trim())
+            .filter(Boolean)
+        : [],
+    ),
+
+  // ---- OTP (self-managed: we generate the code, MSG91 only delivers it) ----
+  /** How long a code stays valid. Long enough for a slow SMS, short enough to limit exposure. */
+  OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  /**
+   * Verification attempts before the code is destroyed. This — not the stored
+   * hash — is the real defence against brute-forcing a 6-digit code.
+   */
+  OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  /** Minimum gap between OTP sends to one number. */
+  OTP_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().positive().default(60),
+  /** Hard cap per number per hour. Every SMS costs real money. */
+  OTP_MAX_REQUESTS_PER_HOUR: z.coerce.number().int().positive().default(5),
+
+  /**
+   * Lifetime of the opaque token handed out when Google sign-in finds no
+   * account and the user must still verify a phone to finish registering.
+   */
+  REGISTRATION_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(600),
 
   // ---- MSG91 (direct REST v5 — see ADR-004) ----
   MSG91_AUTH_KEY: z.string().min(1),
   MSG91_OTP_TEMPLATE_ID: z.string().min(1),
+  /** 6-character DLT-approved SMS sender header, e.g. `ADORNI`. */
   MSG91_SENDER_ID: z.string().min(1),
+  /**
+   * WhatsApp Business phone number registered with MSG91, in international
+   * format without `+` (e.g. `919876543210`).
+   *
+   * Deliberately separate from `MSG91_SENDER_ID` — that is an SMS sender
+   * header, this is a phone number on a different channel. Passing one where
+   * the other belongs fails only against a live account, never in tests.
+   */
+  MSG91_WHATSAPP_NUMBER: z.string().min(1),
 
   // ---- Cashfree (cashfree-pg SDK — see ADR-004) ----
   CASHFREE_APP_ID: z.string().min(1),
@@ -80,6 +116,54 @@ export const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 /**
+ * Secrets that must be real before this application may serve production
+ * traffic. Every one of them is a credential for an outbound integration; a
+ * placeholder in any of them means that integration is silently dead.
+ */
+const PRODUCTION_REQUIRED_SECRETS = [
+  'JWT_SECRET',
+  'GOOGLE_OAUTH_CLIENT_ID',
+  'MSG91_AUTH_KEY',
+  'MSG91_OTP_TEMPLATE_ID',
+  'MSG91_SENDER_ID',
+  'MSG91_WHATSAPP_NUMBER',
+  'CASHFREE_APP_ID',
+  'CASHFREE_SECRET_KEY',
+  'CASHFREE_WEBHOOK_SECRET',
+  'DELHIVERY_API_TOKEN',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+] as const satisfies readonly (keyof Env)[];
+
+/**
+ * Values that are obviously not real credentials.
+ *
+ * Motivated by a live finding: MSG91's OTP endpoint answers **HTTP 200
+ * `{"type":"success"}` even for a completely invalid auth key and template id**.
+ * A misconfigured SMS integration therefore looks perfectly healthy from its
+ * own responses — no amount of provider-side error handling can detect it,
+ * because the provider reports success.
+ *
+ * Since the provider will not tell us, the check has to happen before we ever
+ * call it: a deployment carrying placeholder credentials must fail to start
+ * rather than run and quietly deliver no OTPs at all.
+ */
+const PLACEHOLDER_PATTERNS = [
+  /placeholder/i,
+  /^change[-_ ]?me$/i,
+  /^replace[-_ ]?with/i,
+  /^your[-_ ]/i,
+  /^todo$/i,
+  /^xxx+$/i,
+  /^test[-_]?(key|secret|token)$/i,
+];
+
+function looksLikePlaceholder(value: string): boolean {
+  return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value.trim()));
+}
+
+/**
  * Passed to ConfigModule.forRoot({ validate }). Throws on invalid config,
  * which aborts bootstrap.
  */
@@ -93,5 +177,29 @@ export function validateEnv(raw: Record<string, unknown>): Env {
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
 
-  return result.data;
+  const env = result.data;
+
+  // Development and test deliberately run on placeholders — the providers are
+  // stubbed there, and demanding real credentials to run the test suite would
+  // mean nobody could run it.
+  if (env.NODE_ENV === 'production') {
+    const offenders = PRODUCTION_REQUIRED_SECRETS.filter((key) =>
+      looksLikePlaceholder(String(env[key])),
+    );
+
+    if (offenders.length > 0) {
+      throw new Error(
+        [
+          'Refusing to start in production with placeholder credentials:',
+          ...offenders.map((key) => `  - ${key}`),
+          '',
+          'These are outbound integration secrets. MSG91 in particular reports',
+          'success for invalid credentials, so a placeholder here would not',
+          'surface as an error — OTPs would simply never arrive.',
+        ].join('\n'),
+      );
+    }
+  }
+
+  return env;
 }

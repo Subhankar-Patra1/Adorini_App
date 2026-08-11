@@ -8,6 +8,7 @@ import { ProcessedWebhook } from './processed-webhook.entity';
 import { Product } from './product.entity';
 import { ProductVariant } from './product-variant.entity';
 import { Referral } from './referral.entity';
+import { RefreshToken } from './refresh-token.entity';
 import { Review } from './review.entity';
 import { SizeEnquiry } from './size-enquiry.entity';
 import { User } from './user.entity';
@@ -25,6 +26,7 @@ export * from './processed-webhook.entity';
 export * from './product.entity';
 export * from './product-variant.entity';
 export * from './referral.entity';
+export * from './refresh-token.entity';
 export * from './review.entity';
 export * from './size-enquiry.entity';
 export * from './user.entity';
@@ -51,6 +53,7 @@ export const ENTITIES = [
   Product,
   ProductVariant,
   Referral,
+  RefreshToken,
   Review,
   SizeEnquiry,
   User,

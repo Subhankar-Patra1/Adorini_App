@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
@@ -65,9 +66,9 @@ describe('StorageService', () => {
     it('should throw StorageProviderError on S3 send error', async () => {
       mockS3Send.mockRejectedValueOnce(new Error('S3 Connection Failed'));
 
-      await expect(
-        service.uploadFile('key.jpg', Buffer.from(''), 'image/jpeg'),
-      ).rejects.toThrow(StorageProviderError);
+      await expect(service.uploadFile('key.jpg', Buffer.from(''), 'image/jpeg')).rejects.toThrow(
+        StorageProviderError,
+      );
     });
   });
 

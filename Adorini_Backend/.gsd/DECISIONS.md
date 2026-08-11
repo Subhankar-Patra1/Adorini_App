@@ -80,6 +80,81 @@ TypeORM's default UUID primary key emits `uuid_generate_v4()`, which lives in th
 
 **Rejected**: adding `CREATE EXTENSION IF NOT EXISTS "uuid-ossp"` to the migration — it needs superuser rights and buys nothing over a core function.
 
+## ADR-010: npm `overrides` to lift transitive pins — `js-yaml` and `axios`
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Two dependencies are forced above what their parents ask for:
+
+- **`js-yaml: ^5.2.3`** — `@nestjs/swagger` pulled a version inside the advisory range for GHSA-pm4m-ph32-ghv5 (high, DoS via exponential parsing in flow collections). `npm audit fix` had no non-breaking path.
+- **`axios: ^1.19.0`** — `cashfree-pg@6.0.4` declares `"axios": "1.15.0"` as an **exact** version, with no caret. Left alone, the payments SDK pins the whole tree to a single axios build that can never receive a patch, and any future axios advisory would be unfixable without waiting for Cashfree to publish a new SDK.
+
+**Chosen**: pin both via `overrides`. `npm audit` reports 0 vulnerabilities.
+
+**Note for reviewers**: an unexplained `overrides` entry looks like dead weight — a Phase 3 audit initially flagged `axios` as an unused dependency that should be deleted, because nothing in `src/` imports it. It is not a dependency at all; it is a version floor on a transitive one. Removing it silently downgrades axios to 1.15.0.
+
+**Revisit when**: `cashfree-pg` widens its axios range (then the override can go), or `@nestjs/swagger` ships a patched `js-yaml`.
+
+## ADR-011: Every outbound call carries a deadline
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Forced by**: Phase 3 audit
+
+`fetch` has no default timeout. Every provider called MSG91, Delhivery and Google without one, so an upstream that accepted a connection and then stalled would hold the request until the socket died — potentially minutes. For a COD/payments system that is the *worst* failure mode: it is the opposite of the "fail loudly" property the providers are specified to have, because it fails silently by hanging, holding a Node handle and a database connection each time.
+
+**Chosen**: `src/common/http/fetch-with-timeout.ts` wraps `fetch` with `AbortSignal.timeout()` and raises `UpstreamTimeoutError`, which each provider converts into its own typed error. Budgets are set per upstream by how much a caller can afford to wait — 7s for MSG91 and Google (a buyer is watching), 15s for Delhivery (background jobs and webhooks). The R2 `S3Client` gets `connectionTimeout`/`requestTimeout` via `NodeHttpHandler` and `maxAttempts: 2`, since the SDK's own default is effectively no request timeout.
+
+**Consequence**: timeouts are distinguishable from transport failures (`UpstreamTimeoutError` vs a plain unreachable error), because the two justify different retry behaviour in Phase 4.
+
+## ADR-012: Google starts registration; a verified phone completes it
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`users.phone` is `NOT NULL UNIQUE` — verified against the live database — and it stays that way. It is what COD OTP verification, one-account-per-phone, and `uq_referral_referee_phone` all rest on. Google returns an email and a `googleId`, never a phone, so **Google alone cannot create an account**.
+
+**Chosen**: a two-step flow. `POST /auth/google` returns a discriminated 200 — `AUTHENTICATED` when the `googleId` or a *verified* email already matches a user, otherwise `PHONE_REQUIRED` with an opaque `registrationToken`. The client then runs the normal OTP flow passing that token, and `POST /auth/otp/verify` creates the account with `googleId` and `phone` together. That endpoint is therefore the **only** path in the system that creates a user.
+
+**Rejected**: making `phone` nullable (breaks the identity model three other features depend on); returning 409 for the no-account case (needing a phone is the next step of a flow, not an error — a discriminated union is what a typed Flutter client wants).
+
+**Email matching requires `email_verified`.** An unverified Google email is an unproven claim; honouring it would let anyone who can set their Google profile email seize the matching Adorini account.
+
+**Registration tokens are opaque and Redis-backed, not JWTs** — a JWT is signed but readable, so Google's email and name would travel through client storage and logs in the clear, and a JWT can be replayed as a bearer token if any verifier forgets to check a `typ` claim. An opaque random string is structurally incapable of that. It is stored by hash, single-use, and deleted on redemption.
+
+## ADR-013: Fail-closed global auth guard
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`JwtAuthGuard` is registered via `APP_GUARD`, so **every route is authenticated unless it carries `@Public()`**.
+
+**Rationale**: the two failure modes are not symmetric. Forgetting `@Public()` produces an immediate, obvious 401 in development. Forgetting `@UseGuards()` under an opt-in scheme produces a silently unauthenticated endpoint — the failure nobody notices until it is a data leak.
+
+**Consequence**: every genuinely public endpoint from here on (catalog browsing, PDP, search) must remember `@Public()`. Both health probes already carry it.
+
+**Access tokens carry only `sub`.** A JWT is signed, not encrypted, so phone/email would be readable by anything logging an `Authorization` header, and an embedded `isAdmin` would freeze a privilege decision for the token's lifetime. The guard therefore performs no database read, at the cost that a deleted user retains access for up to the 15-minute token lifetime. Accepted for MVP.
+
+## ADR-014: Self-managed OTP, with the attempt cap as the real control
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+We generate the code, store it in Redis, and use MSG91 purely for delivery (`sendOtp` accepts an explicit OTP). Verification is a local Redis comparison, so login does not depend on MSG91 being reachable at verify time, and expiry/attempt/lockout policy is ours rather than theirs.
+
+The stored value is an **HMAC keyed with `JWT_SECRET`**, not a bare SHA-256: a 6-digit code is only 10⁶ possibilities and a plain hash of it is reversible by anyone who can read Redis. But the honest security argument is that **no hash choice makes a million-space secret safe** — the real control is the attempt counter, which destroys the code after `OTP_MAX_ATTEMPTS`, forcing the attacker to buy a new SMS that the hourly cap then rations.
+
+**Consequence**: Redis is now on the login critical path. If Redis is down, OTP login is down — surfaced as a 503 (verified live), not a 500.
+
+**Operational caveat discovered during verification**: MSG91's `/api/v5/otp` returns **HTTP 200 `{"type":"success"}` even for a completely invalid auth key and template id**. A misconfigured MSG91 therefore looks perfectly healthy from the response alone. Delivery cannot be confirmed at send time; the credential smoke test must verify an SMS actually arrives.
+
+## ADR-015: Referral capture at signup, outside the signup transaction
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Signup is the only moment a referral code can be captured, so `auth` records it — but **after** the User+Wallet transaction commits, in its own try/catch.
+
+**Why not inside**: in PostgreSQL a single failed statement aborts the entire surrounding transaction. A duplicate-referral insert inside the signup transaction would destroy the account creation. A referral is a bonus; it must never be able to stop someone registering.
+
+Unknown codes and already-referred phones both yield `referralApplied: false` with the signup still succeeding. Hitting `uq_referral_referee_phone` is the ADR-008 anti-abuse rule working — the phone was referred before, possibly under a since-deleted account — not an error.
+
+Nothing is credited here. Payout on `DELIVERED` belongs to `wallet`/`webhooks` (@GUARD Risk #1).
+
 ## ADR-005: Backend-first build, Flutter integrates after
 
 **Date**: 2026-08-10 · **Status**: Accepted
