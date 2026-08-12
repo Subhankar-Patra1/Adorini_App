@@ -9,6 +9,7 @@ import { OtpService } from './otp.service';
 import { RegistrationService } from './registration.service';
 import { TokenService } from './token.service';
 import { Referral, User, Wallet } from '../../../database/entities';
+import { ReferralOutcome } from '../referral-status';
 import { ReferralStatus } from '../../../common/enums/domain.enums';
 import { OAuthService, type GoogleUserPayload } from '../../../providers/oauth/oauth.service';
 import { SmsService } from '../../../providers/sms/sms.service';
@@ -247,6 +248,12 @@ describe('AuthService', () => {
     });
 
     describe('referral capture', () => {
+      /**
+       * Every outcome is distinguishable, because the right advice differs.
+       * "Already referred" means stop retyping; "code not found" means check
+       * the spelling. One shared failure message sends a buyer holding a valid
+       * code into a retry loop and then to support.
+       */
       it('records a PENDING referral for a new user', async () => {
         const referrer = makeUser({ id: 'referrer-1', referralCode: 'ABCD2345' });
         usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(referrer);
@@ -257,6 +264,7 @@ describe('AuthService', () => {
           referralCode: 'abcd2345',
         });
 
+        expect(result.referralStatus).toBe(ReferralOutcome.APPLIED);
         expect(result.referralApplied).toBe(true);
         expect(referralsInsert).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -265,6 +273,98 @@ describe('AuthService', () => {
             creditPaise: 10000,
           }),
         );
+      });
+
+      it('reports NOT_PROVIDED when no code was entered', async () => {
+        const result = await service.verifyOtp({ phone: '919876543210', otp: '123456' });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.NOT_PROVIDED);
+        expect(result.referralApplied).toBe(false);
+      });
+
+      it('reports CODE_NOT_FOUND for a typo', async () => {
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'WR0NGC0D',
+        });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.CODE_NOT_FOUND);
+      });
+
+      it('reports SELF_REFERRAL when the code belongs to the signer-up', async () => {
+        const self = makeUser({ id: 'new-user', referralCode: 'ABCD2345' });
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(self);
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.SELF_REFERRAL);
+        expect(referralsInsert).not.toHaveBeenCalled();
+      });
+
+      it('reports ALREADY_REFERRED when the phone was referred before', async () => {
+        // Survives account deletion by design (ADR-008), so this is a normal
+        // outcome years later — the message must not say "invalid code".
+        const referrer = makeUser({ id: 'referrer-1', referralCode: 'ABCD2345' });
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(referrer);
+        referralsInsert.mockRejectedValue(uniqueViolation());
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.ALREADY_REFERRED);
+      });
+
+      it('reports EXISTING_USER when a code arrives on a sign-in', async () => {
+        // Not a wrong code — just too late. Referrals attach at account creation.
+        usersFindOne.mockResolvedValue(makeUser());
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.EXISTING_USER);
+        expect(result.isNewUser).toBe(false);
+      });
+
+      it('reports UNAVAILABLE when recording it fails unexpectedly', async () => {
+        // Our fault, not the buyer's — and the signup still succeeded.
+        const referrer = makeUser({ id: 'referrer-1', referralCode: 'ABCD2345' });
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(referrer);
+        referralsInsert.mockRejectedValue(new Error('connection terminated unexpectedly'));
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.referralStatus).toBe(ReferralOutcome.UNAVAILABLE);
+        expect(result.isNewUser).toBe(true);
+        expect(result.accessToken).toBeTruthy();
+      });
+
+      it('never lets the flag and the reason disagree', async () => {
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'NOPE',
+        });
+
+        expect(result.referralApplied).toBe(result.referralStatus === ReferralOutcome.APPLIED);
       });
 
       it('normalises the code to uppercase before lookup', async () => {
@@ -293,7 +393,7 @@ describe('AuthService', () => {
         });
 
         expect(result.isNewUser).toBe(true);
-        expect(result.referralApplied).toBe(false);
+        expect(result.referralStatus).toBe(ReferralOutcome.CODE_NOT_FOUND);
         expect(referralsInsert).not.toHaveBeenCalled();
       });
 
@@ -303,6 +403,43 @@ describe('AuthService', () => {
         const referrer = makeUser({ id: 'referrer-1', referralCode: 'ABCD2345' });
         usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(referrer);
         referralsInsert.mockRejectedValue(uniqueViolation());
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.isNewUser).toBe(true);
+        expect(result.referralApplied).toBe(false);
+      });
+
+      it('survives an unexpected database error during capture', async () => {
+        // The account is already committed by this point. An error escaping
+        // referral capture would return 5xx for a signup that actually
+        // succeeded — the buyer sees "signup failed", retries, and is told the
+        // number is already registered.
+        const referrer = makeUser({ id: 'referrer-1', referralCode: 'ABCD2345' });
+        usersFindOne.mockResolvedValueOnce(null).mockResolvedValueOnce(referrer);
+        referralsInsert.mockRejectedValue(new Error('connection terminated unexpectedly'));
+
+        const result = await service.verifyOtp({
+          phone: '919876543210',
+          otp: '123456',
+          referralCode: 'ABCD2345',
+        });
+
+        expect(result.isNewUser).toBe(true);
+        expect(result.referralApplied).toBe(false);
+        expect(result.accessToken).toBeTruthy();
+      });
+
+      it('survives the referrer lookup itself failing', async () => {
+        // The lookup is a database call too — a connection blip there is no
+        // more entitled to fail a completed signup than a duplicate key is.
+        usersFindOne
+          .mockResolvedValueOnce(null)
+          .mockRejectedValueOnce(new Error('connection terminated unexpectedly'));
 
         const result = await service.verifyOtp({
           phone: '919876543210',

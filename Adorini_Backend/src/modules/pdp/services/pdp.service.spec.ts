@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { PdpService } from './pdp.service';
@@ -192,8 +193,22 @@ describe('PdpService', () => {
     it('resolves the effective variant price, falling back to the product price', async () => {
       productQb.getOne.mockResolvedValue(productFixture());
       variantRepo.find.mockResolvedValue([
-        { id: 'v1', sku: 'A-40', nominalSize: 40, colour: 'Teal', pricePaise: null, stockQuantity: 5 },
-        { id: 'v2', sku: 'A-42', nominalSize: 42, colour: 'Teal', pricePaise: 82900, stockQuantity: 2 },
+        {
+          id: 'v1',
+          sku: 'A-40',
+          nominalSize: 40,
+          colour: 'Teal',
+          pricePaise: null,
+          stockQuantity: 5,
+        },
+        {
+          id: 'v2',
+          sku: 'A-42',
+          nominalSize: 42,
+          colour: 'Teal',
+          pricePaise: 82900,
+          stockQuantity: 2,
+        },
       ]);
 
       const detail = await service.getProductDetail('ajrak-viscose-stretch-kurti');
@@ -205,9 +220,30 @@ describe('PdpService', () => {
     it('offers only in-stock sizes and colours as selector chips', async () => {
       productQb.getOne.mockResolvedValue(productFixture());
       variantRepo.find.mockResolvedValue([
-        { id: 'v1', sku: 'A-40-T', nominalSize: 40, colour: 'Teal', pricePaise: null, stockQuantity: 5 },
-        { id: 'v2', sku: 'A-42-M', nominalSize: 42, colour: 'Maroon', pricePaise: null, stockQuantity: 0 },
-        { id: 'v3', sku: 'A-44-T', nominalSize: 44, colour: 'Teal', pricePaise: null, stockQuantity: 3 },
+        {
+          id: 'v1',
+          sku: 'A-40-T',
+          nominalSize: 40,
+          colour: 'Teal',
+          pricePaise: null,
+          stockQuantity: 5,
+        },
+        {
+          id: 'v2',
+          sku: 'A-42-M',
+          nominalSize: 42,
+          colour: 'Maroon',
+          pricePaise: null,
+          stockQuantity: 0,
+        },
+        {
+          id: 'v3',
+          sku: 'A-44-T',
+          nominalSize: 44,
+          colour: 'Teal',
+          pricePaise: null,
+          stockQuantity: 3,
+        },
       ]);
 
       const detail = await service.getProductDetail('ajrak-viscose-stretch-kurti');
@@ -269,8 +305,10 @@ describe('PdpService', () => {
   });
 
   describe('listReviews', () => {
-    const query = (overrides: Partial<ListReviewsQueryDto> = {}): ListReviewsQueryDto =>
-      ({ limit: 2, ...overrides }) as ListReviewsQueryDto;
+    const query = (overrides: Partial<ListReviewsQueryDto> = {}): ListReviewsQueryDto => ({
+      limit: 2,
+      ...overrides,
+    });
 
     function reviewFixture(id: string, createdAt: string) {
       return {
@@ -412,11 +450,12 @@ describe('PdpService', () => {
         createdAt: new Date('2026-08-12T00:00:00.000Z'),
       });
 
-      await service.createSizeEnquiry('slug', { requestedSize: '50', contactPhone: '919876543210' });
+      await service.createSizeEnquiry('slug', {
+        requestedSize: '50',
+        contactPhone: '919876543210',
+      });
 
-      expect(enquiryRepo.create).toHaveBeenCalledWith(
-        expect.objectContaining({ message: null }),
-      );
+      expect(enquiryRepo.create).toHaveBeenCalledWith(expect.objectContaining({ message: null }));
     });
   });
 });

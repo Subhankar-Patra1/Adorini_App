@@ -192,9 +192,14 @@ export class PdpService {
    * own contact phone. `userId` stays null until the auth module lands and can
    * supply the caller's identity — the column is nullable for that reason.
    */
+  /**
+   * @param userId the signed-in customer, when there is one. Null for an
+   * anonymous visitor — the fallback has to work before anyone has an account.
+   */
   async createSizeEnquiry(
     slug: string,
     dto: CreateSizeEnquiryDto,
+    userId: string | null = null,
   ): Promise<SizeEnquiryResponseDto> {
     const product = await this.productRepo.findOne({
       where: { slug, isActive: true },
@@ -208,7 +213,7 @@ export class PdpService {
     const enquiry = await this.enquiryRepo.save(
       this.enquiryRepo.create({
         productId: product.id,
-        userId: null,
+        userId,
         requestedSize: dto.requestedSize,
         contactPhone: dto.contactPhone,
         message: dto.message ?? null,
@@ -249,8 +254,7 @@ export class PdpService {
       totalCount: total,
       // Rounded to one decimal — the client renders "4.3", and an unrounded
       // 4.333333333333333 in the contract invites clients to round differently.
-      averageRating:
-        total > 0 && row?.average ? Math.round(Number(row.average) * 10) / 10 : null,
+      averageRating: total > 0 && row?.average ? Math.round(Number(row.average) * 10) / 10 : null,
       ratingCounts: {
         '1': Number(row?.rating_1 ?? 0),
         '2': Number(row?.rating_2 ?? 0),

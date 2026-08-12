@@ -36,12 +36,37 @@ export class JwtAuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (isPublic) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = extractBearerToken(request.headers.authorization);
+
+    /**
+     * Public routes still get the caller identified when they present a valid
+     * token — the route is simply not *required* to have one.
+     *
+     * Without this, `@Public()` would mean "anonymous", and a signed-in buyer
+     * browsing the catalog or submitting a size enquiry would be indistinguishable
+     * from a stranger. `SizeEnquiry.userId` is nullable precisely so an
+     * unauthenticated visitor can enquire, but an enquiry from a known customer
+     * should still be attributed to them in the admin inbox.
+     *
+     * A bad token on a public route is not an error: the request proceeds
+     * anonymously rather than being rejected, because the endpoint never needed
+     * authentication in the first place.
+     */
+    if (isPublic) {
+      if (token) {
+        try {
+          const payload = await this.verify(token);
+          if (payload.sub) {
+            request.user = { id: payload.sub };
+          }
+        } catch {
+          // Ignored by design — see above.
+        }
+      }
+
+      return true;
+    }
 
     if (!token) {
       throw new UnauthorizedException('Missing bearer token');
@@ -49,9 +74,7 @@ export class JwtAuthGuard implements CanActivate {
 
     let payload: AccessTokenPayload;
     try {
-      payload = await this.jwt.verifyAsync<AccessTokenPayload>(token, {
-        secret: this.config.get('JWT_SECRET', { infer: true }),
-      });
+      payload = await this.verify(token);
     } catch {
       // Deliberately opaque: distinguishing "expired" from "bad signature" from
       // "malformed" tells an attacker which part of a forged token to fix.
@@ -64,6 +87,12 @@ export class JwtAuthGuard implements CanActivate {
 
     request.user = { id: payload.sub };
     return true;
+  }
+
+  private verify(token: string): Promise<AccessTokenPayload> {
+    return this.jwt.verifyAsync<AccessTokenPayload>(token, {
+      secret: this.config.get('JWT_SECRET', { infer: true }),
+    });
   }
 }
 

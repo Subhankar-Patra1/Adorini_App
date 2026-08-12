@@ -1,5 +1,6 @@
 import { Address } from './address.entity';
 import { Brand } from './brand.entity';
+import { CartItem } from './cart-item.entity';
 import { Category } from './category.entity';
 import { MediaAsset } from './media-asset.entity';
 import { Order } from './order.entity';
@@ -9,6 +10,7 @@ import { Product } from './product.entity';
 import { ProductVariant } from './product-variant.entity';
 import { Referral } from './referral.entity';
 import { RefreshToken } from './refresh-token.entity';
+import { ReturnRequest } from './return-request.entity';
 import { Review } from './review.entity';
 import { SizeEnquiry } from './size-enquiry.entity';
 import { User } from './user.entity';
@@ -18,6 +20,7 @@ import { WalletTransaction } from './wallet-transaction.entity';
 export * from './base.entity';
 export * from './address.entity';
 export * from './brand.entity';
+export * from './cart-item.entity';
 export * from './category.entity';
 export * from './media-asset.entity';
 export * from './order.entity';
@@ -27,6 +30,7 @@ export * from './product.entity';
 export * from './product-variant.entity';
 export * from './referral.entity';
 export * from './refresh-token.entity';
+export * from './return-request.entity';
 export * from './review.entity';
 export * from './size-enquiry.entity';
 export * from './user.entity';
@@ -45,6 +49,7 @@ export * from './wallet-transaction.entity';
 export const ENTITIES = [
   Address,
   Brand,
+  CartItem,
   Category,
   MediaAsset,
   Order,
@@ -54,6 +59,7 @@ export const ENTITIES = [
   ProductVariant,
   Referral,
   RefreshToken,
+  ReturnRequest,
   Review,
   SizeEnquiry,
   User,

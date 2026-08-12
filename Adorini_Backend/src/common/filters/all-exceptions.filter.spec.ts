@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { QueryFailedError } from 'typeorm';
+import { z } from 'zod';
 
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
@@ -72,6 +73,27 @@ describe('AllExceptionsFilter', () => {
     });
   });
 
+  describe('hand-parsed schemas', () => {
+    it('maps a raw ZodError to 400, not 500', () => {
+      // The webhook controllers parse by hand — they must authenticate the
+      // caller before trusting the body — so ZodValidationPipe never sees it.
+      // A 500 here would tell the provider to redeliver a payload that can
+      // never parse, forever.
+      const error = z.object({ orderId: z.string() }).safeParse({}).error!;
+
+      const body = bodyFor(error);
+
+      expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+      expect(body.code).toBe('VALIDATION_FAILED');
+    });
+
+    it('names the offending field', () => {
+      const error = z.object({ orderId: z.string() }).safeParse({}).error!;
+
+      expect(bodyFor(error).message).toContain('orderId');
+    });
+  });
+
   describe('database errors', () => {
     it('maps a unique violation to 409 without naming the constraint', () => {
       const error = new QueryFailedError('INSERT ...', [], new Error('duplicate key'));
@@ -105,6 +127,22 @@ describe('AllExceptionsFilter', () => {
 
       expect(status).toHaveBeenCalledWith(expectedStatus);
       expect(body.code).toBe(expectedCode);
+    });
+
+    it('keeps a machine-readable code supplied by the thrower', () => {
+      // Services raise codes like ADDRESS_LOCKED and INSUFFICIENT_STOCK so the
+      // client can branch on them. A generic "CONFLICT" cannot tell a screen
+      // whether to offer a retry, a different size, or a countdown.
+      const body = bodyFor(
+        new ConflictException({ code: 'ADDRESS_LOCKED', message: 'Already dispatched' }),
+      );
+
+      expect(body.code).toBe('ADDRESS_LOCKED');
+      expect(body.message).toBe('Already dispatched');
+    });
+
+    it('falls back to the status name when no code is given', () => {
+      expect(bodyFor(new ConflictException('plain')).code).toBe('CONFLICT');
     });
 
     it('flattens an array of validation messages', () => {

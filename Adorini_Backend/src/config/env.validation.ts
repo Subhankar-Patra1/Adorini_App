@@ -109,6 +109,14 @@ export const envSchema = z.object({
 
   // ---- Business rules (server-authoritative — see @GUARD Risk #3) ----
   FREE_DELIVERY_THRESHOLD_PAISE: z.coerce.number().int().default(300000),
+  /**
+   * Delivery charged on orders below the free-delivery threshold.
+   *
+   * ⚠️ The ₹49 default is a placeholder — the PRD fixes the *threshold*
+   * (₹3,000) but never states the fee itself. Confirm the real number with the
+   * business before launch; it is charged to every buyer under the threshold.
+   */
+  DELIVERY_FEE_PAISE: z.coerce.number().int().nonnegative().default(4900),
   FIRST_ORDER_DISCOUNT_PERCENT: z.coerce.number().int().min(0).max(100).default(10),
   REFERRAL_CREDIT_PAISE: z.coerce.number().int().default(10000),
 });
@@ -131,6 +139,10 @@ const PRODUCTION_REQUIRED_SECRETS = [
   'CASHFREE_SECRET_KEY',
   'CASHFREE_WEBHOOK_SECRET',
   'DELHIVERY_API_TOKEN',
+  // Delhivery and MSG91 do not sign their callbacks, so these shared secrets
+  // are the only thing separating a real webhook from a forged one.
+  'DELHIVERY_WEBHOOK_TOKEN',
+  'MSG91_WEBHOOK_TOKEN',
   'R2_ACCOUNT_ID',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',

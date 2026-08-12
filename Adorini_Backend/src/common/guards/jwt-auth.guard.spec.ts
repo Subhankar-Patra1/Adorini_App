@@ -38,11 +38,40 @@ describe('JwtAuthGuard', () => {
   });
 
   describe('@Public() routes', () => {
-    it('lets a public route through without a token', async () => {
+    beforeEach(() => {
       getAllAndOverride.mockReturnValue(true);
+    });
 
+    it('lets a public route through without a token', async () => {
       await expect(guard.canActivate(contextWith())).resolves.toBe(true);
       expect(verifyAsync).not.toHaveBeenCalled();
+      expect(request.user).toBeUndefined();
+    });
+
+    it('still identifies the caller when a valid token is presented', async () => {
+      // Public means "no token required", not "no identity". A signed-in buyer
+      // browsing the catalogue or sending a size enquiry should be recognised.
+      verifyAsync.mockResolvedValue({ sub: 'user-123' });
+
+      await expect(guard.canActivate(contextWith('Bearer good.token'))).resolves.toBe(true);
+      expect(request.user).toEqual({ id: 'user-123' });
+    });
+
+    it('proceeds anonymously when the token is invalid', async () => {
+      // Rejecting here would make a stale token *worse* than no token on an
+      // endpoint that never required one — a customer whose session expired
+      // would find public pages breaking.
+      verifyAsync.mockRejectedValue(new Error('jwt expired'));
+
+      await expect(guard.canActivate(contextWith('Bearer stale.token'))).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
+    });
+
+    it('proceeds anonymously when the token carries no subject', async () => {
+      verifyAsync.mockResolvedValue({ someOtherClaim: true });
+
+      await expect(guard.canActivate(contextWith('Bearer no.sub'))).resolves.toBe(true);
+      expect(request.user).toBeUndefined();
     });
   });
 

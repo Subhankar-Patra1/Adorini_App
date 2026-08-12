@@ -24,6 +24,15 @@ import type { Env } from '../config/env.validation';
         url: config.get('DATABASE_URL', { infer: true }),
         ssl: config.get('DATABASE_SSL', { infer: true }) ? { rejectUnauthorized: false } : false,
         entities: ENTITIES,
+
+        /**
+         * Declared, but not auto-run (see `migrationsRun` below).
+         *
+         * The app needs to *know* where migrations are so tooling and tests can
+         * apply them through this DataSource; it must not apply them itself.
+         */
+        migrations: [`${__dirname}/migrations/*{.ts,.js}`],
+
         namingStrategy: new SnakeNamingStrategy(),
 
         // Keep in step with data-source.ts — see the note there.

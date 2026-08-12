@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
 import { ReferralStatus, WalletTransactionType } from '../../../common/enums/domain.enums';
+import { Order } from '../../../database/entities/order.entity';
 import { Referral } from '../../../database/entities/referral.entity';
 import { Wallet } from '../../../database/entities/wallet.entity';
 import { WalletTransaction } from '../../../database/entities/wallet-transaction.entity';
@@ -36,10 +37,7 @@ export class WalletCreditService {
     manager: EntityManager,
     orderId: string,
   ): Promise<ReferralCreditOutcome> {
-    const referral = await manager.findOne(Referral, {
-      where: { qualifyingOrderId: orderId },
-      lock: { mode: 'pessimistic_write' },
-    });
+    const referral = await this.findReferralForOrder(manager, orderId);
 
     if (!referral) {
       return { outcome: 'no_referral' };
@@ -96,9 +94,71 @@ export class WalletCreditService {
   }
 
   /**
-   * Wallets are minted lazily — a user who never earns credit never needs a row.
-   * Locked on read so two concurrent credits to the same wallet serialise instead
-   * of both reading the pre-credit balance and one overwriting the other.
+   * Resolves which referral this delivery settles.
+   *
+   * Two lookups, in order of authority:
+   *
+   * 1. An explicit `qualifyingOrderId` link, if something set one.
+   * 2. Otherwise, the referee's own outstanding referral — resolved from the
+   *    order's buyer.
+   *
+   * The fallback exists because **nothing currently writes `qualifyingOrderId`**.
+   * Signup records the referral before any order exists (it has no order to
+   * point at), and order placement lives in `checkout`, which is not built yet.
+   * With only the first lookup, every payout would silently find nothing: the
+   * referral feature would appear complete, cost nothing, and pay no one — and
+   * no test would catch it, because the module that was supposed to set the link
+   * does not exist to be tested.
+   *
+   * Resolving through the referee also matches the business rule better. The
+   * reward is for "the referee's first delivered order", and the `PENDING`
+   * filter expresses exactly that: once paid the referral is `CREDITED` and
+   * later deliveries find nothing.
+   *
+   * When the fallback matches, the link is recorded so the row afterwards shows
+   * which order actually qualified.
+   */
+  private async findReferralForOrder(
+    manager: EntityManager,
+    orderId: string,
+  ): Promise<Referral | null> {
+    const linked = await manager.findOne(Referral, {
+      where: { qualifyingOrderId: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (linked) {
+      return linked;
+    }
+
+    const order = await manager.findOne(Order, {
+      where: { id: orderId },
+      select: { id: true, userId: true },
+    });
+
+    if (!order) {
+      return null;
+    }
+
+    const byReferee = await manager.findOne(Referral, {
+      where: { refereeId: order.userId, status: ReferralStatus.PENDING },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (byReferee) {
+      byReferee.qualifyingOrderId = orderId;
+    }
+
+    return byReferee;
+  }
+
+  /**
+   * Signup creates a wallet for every account, so this normally just loads it.
+   * The create branch is a safety net for accounts made before that was true,
+   * or by any future path that skips it.
+   *
+   * Locked on read so two concurrent credits to the same wallet serialise
+   * instead of both reading the pre-credit balance and one overwriting the other.
    */
   private async lockOrCreateWallet(manager: EntityManager, userId: string): Promise<Wallet> {
     const existing = await manager.findOne(Wallet, {

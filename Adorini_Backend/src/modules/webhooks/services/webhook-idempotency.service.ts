@@ -19,9 +19,7 @@ export interface WebhookEvent {
   payload: Record<string, unknown>;
 }
 
-export type IngestResult<T> =
-  | { status: 'processed'; result: T }
-  | { status: 'duplicate' };
+export type IngestResult<T> = { status: 'processed'; result: T } | { status: 'duplicate' };
 
 /**
  * Applies a webhook exactly once.

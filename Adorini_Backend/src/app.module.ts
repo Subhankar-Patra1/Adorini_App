@@ -9,10 +9,16 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { validateEnv } from './config/env.validation';
 import { DatabaseModule } from './database/database.module';
 
+import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CartModule } from './modules/cart/cart.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { CheckoutModule } from './modules/checkout/checkout.module';
+import { OrdersModule } from './modules/orders/orders.module';
 import { PdpModule } from './modules/pdp/pdp.module';
+import { ReturnsModule } from './modules/returns/returns.module';
 import { UsersModule } from './modules/users/users.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 import { RedisModule } from './providers/redis/redis.module';
@@ -28,9 +34,7 @@ import { RedisModule } from './providers/redis/redis.module';
     // Application-level rate limiting. Cloudflare handles edge rate limiting
     // (see ADR-003), but the origin must not depend on the edge being in front
     // of it — direct-to-Railway requests bypass Cloudflare entirely.
-    ThrottlerModule.forRoot([
-      { name: 'default', ttl: 60_000, limit: 100 },
-    ]),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 100 }]),
 
     DatabaseModule,
 
@@ -38,12 +42,25 @@ import { RedisModule } from './providers/redis/redis.module';
     // exactly once for Nest to instantiate it.
     RedisModule,
 
+    // Identity first — everything below scopes its data to the calling user.
     AuthModule,
     UsersModule,
     HealthModule,
+
+    // Discovery: public browsing.
     CatalogModule,
     PdpModule,
+
+    // The purchase journey.
+    CartModule,
+    CheckoutModule,
+    OrdersModule,
+    WalletModule,
+    ReturnsModule,
+
+    // Inbound provider callbacks, and staff tools.
     WebhooksModule,
+    AdminModule,
   ],
 
   providers: [

@@ -53,8 +53,21 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Verify a login code, signing in or registering',
-    description:
-      'The only endpoint that creates an account. Pass registrationToken to finish a signup started with Google, and referralCode to record a referral.',
+    description: [
+      'The only endpoint that creates an account.',
+      'Pass `registrationToken` to finish a signup started with Google.',
+      '',
+      'Pass `referralCode` to record a referral — it must be sent **with this request**,',
+      'because referrals attach only at account creation and cannot be applied afterwards.',
+      'The source does not matter: a code captured from a shared install link and one typed',
+      'into a "Have a referral code?" box are the same request.',
+      '',
+      '`referralStatus` explains the outcome so the client can show an accurate message:',
+      '`APPLIED`, `NOT_PROVIDED`, `CODE_NOT_FOUND` (typo — ask them to re-check),',
+      '`ALREADY_REFERRED` (this number already used the offer — do not ask them to retry),',
+      '`SELF_REFERRAL`, `EXISTING_USER` (codes only apply to new accounts),',
+      'or `UNAVAILABLE` (our failure; the signup still succeeded).',
+    ].join('\n'),
   })
   @ApiResponse({ status: 200, type: LoginResultResponseDto })
   @ApiResponse({ status: 401, description: 'Code incorrect, expired, or too many attempts' })

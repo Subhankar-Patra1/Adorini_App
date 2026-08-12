@@ -13,6 +13,7 @@ import { OtpService } from './otp.service';
 import { RegistrationService } from './registration.service';
 import { TokenService, type IssuedTokens, type SessionContext } from './token.service';
 import { Referral, User, Wallet } from '../../../database/entities';
+import { ReferralOutcome, isReferralApplied } from '../referral-status';
 import { ReferralStatus } from '../../../common/enums/domain.enums';
 import { maskPhone } from '../../../common/utils/phone.util';
 import { OAuthService, type GoogleUserPayload } from '../../../providers/oauth/oauth.service';
@@ -34,7 +35,10 @@ export interface PublicUser {
 
 export interface LoginResult extends IssuedTokens {
   isNewUser: boolean;
+  /** Convenience flag; true only when `referralStatus` is `APPLIED`. */
   referralApplied: boolean;
+  /** Why the referral was or was not recorded — see `ReferralOutcome`. */
+  referralStatus: ReferralOutcome;
   user: PublicUser;
 }
 
@@ -135,7 +139,11 @@ export class AuthService {
       return {
         ...issued,
         isNewUser: false,
-        referralApplied: false,
+        // A code sent on a sign-in is not wrong, it is simply too late — say so
+        // rather than reporting it as an invalid code.
+        ...this.referralResult(
+          referralCode ? ReferralOutcome.EXISTING_USER : ReferralOutcome.NOT_PROVIDED,
+        ),
         user: toPublicUser(existing),
       };
     }
@@ -145,16 +153,41 @@ export class AuthService {
     // Referral capture runs only for genuinely new accounts, and only after the
     // account exists — see captureReferral for why it is outside the signup
     // transaction.
-    const referralApplied =
-      wasCreated && referralCode ? await this.captureReferral(user, referralCode) : false;
+    const outcome = await this.resolveReferralOutcome(user, wasCreated, referralCode);
 
     const issued = await this.tokens.issueTokens(user.id, context);
     return {
       ...issued,
       isNewUser: wasCreated,
-      referralApplied,
+      ...this.referralResult(outcome),
       user: toPublicUser(user),
     };
+  }
+
+  /** Keeps the boolean and the reason from ever disagreeing. */
+  private referralResult(outcome: ReferralOutcome): {
+    referralApplied: boolean;
+    referralStatus: ReferralOutcome;
+  } {
+    return { referralApplied: isReferralApplied(outcome), referralStatus: outcome };
+  }
+
+  private async resolveReferralOutcome(
+    user: User,
+    wasCreated: boolean,
+    referralCode?: string,
+  ): Promise<ReferralOutcome> {
+    if (!referralCode) {
+      return ReferralOutcome.NOT_PROVIDED;
+    }
+
+    // A concurrent signup resolved to an existing account (the 23505 recovery
+    // path), so this is a sign-in after all.
+    if (!wasCreated) {
+      return ReferralOutcome.EXISTING_USER;
+    }
+
+    return this.captureReferral(user, referralCode);
   }
 
   /**
@@ -227,7 +260,10 @@ export class AuthService {
       status: 'AUTHENTICATED',
       ...issued,
       isNewUser: false,
-      referralApplied: false,
+      // Google sign-in never carries a code: a new Google user is routed
+      // through PHONE_REQUIRED and finishes at /auth/otp/verify, which is where
+      // a referral would be supplied.
+      ...this.referralResult(ReferralOutcome.NOT_PROVIDED),
       user: toPublicUser(user),
     };
   }
@@ -322,7 +358,7 @@ export class AuthService {
    * Nothing is credited here. The ₹100 is only awarded once the referee's order
    * reaches `DELIVERED`, which the wallet module handles.
    */
-  private async captureReferral(referee: User, referralCode: string): Promise<boolean> {
+  private async captureReferral(referee: User, referralCode: string): Promise<ReferralOutcome> {
     /**
      * Nothing in here may throw.
      *
@@ -341,10 +377,15 @@ export class AuthService {
         where: { referralCode: referralCode.trim().toUpperCase() },
       });
 
-      if (!referrer || referrer.id === referee.id) {
+      if (!referrer) {
         // A mistyped code must not fail the signup — the account is already
-        // created and the buyer is mid-flow.
-        return false;
+        // created and the buyer is mid-flow. Telling them the code was not
+        // found is what lets them fix it rather than guess.
+        return ReferralOutcome.CODE_NOT_FOUND;
+      }
+
+      if (referrer.id === referee.id) {
+        return ReferralOutcome.SELF_REFERRAL;
       }
 
       await this.referrals.insert({
@@ -355,23 +396,24 @@ export class AuthService {
         creditPaise: this.referralCreditPaise,
       });
 
-      return true;
+      return ReferralOutcome.APPLIED;
     } catch (error) {
       if (isUniqueViolation(error)) {
         // `uq_referral_referee_phone` is global and outlives deleted accounts
         // (ADR-008), so this phone has been referred before. That is the
         // anti-abuse rule working, not an error — logged at info, not error.
         this.logger.log(`Referral skipped for ${maskPhone(referee.phone)}: already referred`);
-        return false;
+        return ReferralOutcome.ALREADY_REFERRED;
       }
 
       // Anything else is a genuine fault worth investigating, but still not
-      // worth failing the signup over. Loud in the logs, silent to the buyer.
+      // worth failing the signup over. Loud in the logs, and reported as our
+      // problem rather than as a bad code.
       this.logger.error(
         `Referral capture failed for ${maskPhone(referee.phone)}; signup unaffected`,
         error instanceof Error ? error.stack : String(error),
       );
-      return false;
+      return ReferralOutcome.UNAVAILABLE;
     }
   }
 

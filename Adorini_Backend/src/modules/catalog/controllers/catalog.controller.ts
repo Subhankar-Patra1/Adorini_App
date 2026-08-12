@@ -6,7 +6,17 @@ import { BrandDto } from '../dto/brand.dto';
 import { CategoryDto } from '../dto/category.dto';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import { ProductListResponseDto } from '../dto/product-summary.dto';
+import { Public } from '../../../common/decorators/public.decorator';
 
+/**
+ * Browsing the catalogue requires no account — a shopper must be able to see
+ * what is for sale before deciding to sign up.
+ *
+ * `@Public()` is mandatory here rather than optional: authentication is
+ * registered globally and fail-closed (ADR-013), so without it every one of
+ * these routes answers 401 and the storefront is unreachable.
+ */
+@Public()
 @ApiTags('catalog')
 @Controller('catalog')
 export class CatalogController {

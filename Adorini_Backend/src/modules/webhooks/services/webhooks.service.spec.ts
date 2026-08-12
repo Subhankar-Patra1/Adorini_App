@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { WebhookIdempotencyService } from './webhook-idempotency.service';
 import { WebhooksService } from './webhooks.service';
@@ -8,7 +9,7 @@ import {
   PaymentStatus,
   WebhookProvider,
 } from '../../../common/enums/domain.enums';
-import { Order } from '../../../database/entities/order.entity';
+import type { Order } from '../../../database/entities/order.entity';
 import { OrderTransitionService } from '../../orders/services/order-transition.service';
 import { WalletCreditService } from '../../wallet/services/wallet-credit.service';
 
@@ -22,10 +23,7 @@ describe('WebhooksService', () => {
   /** Runs the apply callback inline so the handler's real logic is exercised. */
   function passThroughIngest() {
     idempotency.ingest.mockImplementation(
-      async (
-        _event: unknown,
-        apply: (m: typeof manager) => Promise<{ result: unknown }>,
-      ) => {
+      async (_event: unknown, apply: (m: typeof manager) => Promise<{ result: unknown }>) => {
         const applied = await apply(manager);
         return { status: 'processed', result: applied.result };
       },
@@ -77,7 +75,7 @@ describe('WebhooksService', () => {
     it('de-duplicates on cf_payment_id when present', async () => {
       manager.findOne.mockResolvedValue(order());
 
-      await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 98765) as never);
+      await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 98765));
 
       expect(idempotency.ingest).toHaveBeenCalledWith(
         expect.objectContaining({ provider: WebhookProvider.CASHFREE, eventId: '98765' }),
@@ -88,7 +86,7 @@ describe('WebhooksService', () => {
     it('falls back to type:order_id when no payment id is supplied', async () => {
       manager.findOne.mockResolvedValue(order());
 
-      await service.handleCashfree(payload('PAYMENT_USER_DROPPED_WEBHOOK') as never);
+      await service.handleCashfree(payload('PAYMENT_USER_DROPPED_WEBHOOK'));
 
       expect(idempotency.ingest).toHaveBeenCalledWith(
         expect.objectContaining({ eventId: 'PAYMENT_USER_DROPPED_WEBHOOK:cf-order-1' }),
@@ -99,9 +97,7 @@ describe('WebhooksService', () => {
     it('confirms a prepaid order on payment success', async () => {
       manager.findOne.mockResolvedValue(order({ paymentMethod: PaymentMethod.UPI }));
 
-      const outcome = await service.handleCashfree(
-        payload('PAYMENT_SUCCESS_WEBHOOK', 1) as never,
-      );
+      const outcome = await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 1));
 
       expect(outcome).toBe('processed');
       expect(transitions.transition).toHaveBeenCalledWith(
@@ -115,7 +111,7 @@ describe('WebhooksService', () => {
     it('routes a COD order to intent verification rather than confirmed', async () => {
       manager.findOne.mockResolvedValue(order({ paymentMethod: PaymentMethod.COD }));
 
-      await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 1) as never);
+      await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 1));
 
       expect(transitions.transition).toHaveBeenCalledWith(
         manager,
@@ -128,7 +124,7 @@ describe('WebhooksService', () => {
     it('records a failed payment without moving the order', async () => {
       manager.findOne.mockResolvedValue(order());
 
-      await service.handleCashfree(payload('PAYMENT_FAILED_WEBHOOK', 2) as never);
+      await service.handleCashfree(payload('PAYMENT_FAILED_WEBHOOK', 2));
 
       expect(transitions.setPaymentStatus).toHaveBeenCalledWith(
         manager,
@@ -141,9 +137,7 @@ describe('WebhooksService', () => {
     it('reports unmatched when no order carries the Cashfree order id', async () => {
       manager.findOne.mockResolvedValue(null);
 
-      const outcome = await service.handleCashfree(
-        payload('PAYMENT_SUCCESS_WEBHOOK', 3) as never,
-      );
+      const outcome = await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 3));
 
       expect(outcome).toBe('unmatched');
       expect(transitions.transition).not.toHaveBeenCalled();
@@ -152,7 +146,7 @@ describe('WebhooksService', () => {
     it('ignores event types it takes no action on', async () => {
       manager.findOne.mockResolvedValue(order());
 
-      const outcome = await service.handleCashfree(payload('SOMETHING_ELSE', 4) as never);
+      const outcome = await service.handleCashfree(payload('SOMETHING_ELSE', 4));
 
       expect(outcome).toBe('ignored');
     });
@@ -160,9 +154,7 @@ describe('WebhooksService', () => {
     it('reports a duplicate straight through from the idempotency layer', async () => {
       idempotency.ingest.mockResolvedValue({ status: 'duplicate' });
 
-      const outcome = await service.handleCashfree(
-        payload('PAYMENT_SUCCESS_WEBHOOK', 5) as never,
-      );
+      const outcome = await service.handleCashfree(payload('PAYMENT_SUCCESS_WEBHOOK', 5));
 
       expect(outcome).toBe('duplicate');
       expect(transitions.transition).not.toHaveBeenCalled();
@@ -180,7 +172,7 @@ describe('WebhooksService', () => {
     it('builds an event id from waybill, timestamp and status', async () => {
       manager.findOne.mockResolvedValue(order({ status: OrderStatus.CONFIRMED }));
 
-      await service.handleDelhivery(payload('UD') as never);
+      await service.handleDelhivery(payload('UD'));
 
       expect(idempotency.ingest).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -199,7 +191,7 @@ describe('WebhooksService', () => {
     ])('maps status type %s to %s', async (statusType, expected) => {
       manager.findOne.mockResolvedValue(order({ status: OrderStatus.CONFIRMED }));
 
-      await service.handleDelhivery(payload(statusType) as never);
+      await service.handleDelhivery(payload(statusType));
 
       expect(transitions.transition).toHaveBeenCalledWith(
         manager,
@@ -212,7 +204,7 @@ describe('WebhooksService', () => {
     it.each(['PP', 'UNKNOWN_CODE', ''])('records status %s without acting', async (statusType) => {
       manager.findOne.mockResolvedValue(order());
 
-      const outcome = await service.handleDelhivery(payload(statusType) as never);
+      const outcome = await service.handleDelhivery(payload(statusType));
 
       expect(outcome).toBe('ignored');
       expect(transitions.transition).not.toHaveBeenCalled();
@@ -222,19 +214,16 @@ describe('WebhooksService', () => {
       manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
       transitions.transition.mockResolvedValue({ order: order(), changed: true });
 
-      await service.handleDelhivery(payload('DL') as never);
+      await service.handleDelhivery(payload('DL'));
 
-      expect(walletCredit.creditReferralForDeliveredOrder).toHaveBeenCalledWith(
-        manager,
-        'order-1',
-      );
+      expect(walletCredit.creditReferralForDeliveredOrder).toHaveBeenCalledWith(manager, 'order-1');
     });
 
     it('does not re-credit when the delivery transition was a no-op', async () => {
       manager.findOne.mockResolvedValue(order({ status: OrderStatus.DELIVERED }));
       transitions.transition.mockResolvedValue({ order: order(), changed: false });
 
-      await service.handleDelhivery(payload('DL', '2026-08-12T09:00:00Z') as never);
+      await service.handleDelhivery(payload('DL', '2026-08-12T09:00:00Z'));
 
       expect(walletCredit.creditReferralForDeliveredOrder).not.toHaveBeenCalled();
     });
@@ -242,7 +231,7 @@ describe('WebhooksService', () => {
     it('does not credit on a non-delivery transition', async () => {
       manager.findOne.mockResolvedValue(order({ status: OrderStatus.CONFIRMED }));
 
-      await service.handleDelhivery(payload('UD') as never);
+      await service.handleDelhivery(payload('UD'));
 
       expect(walletCredit.creditReferralForDeliveredOrder).not.toHaveBeenCalled();
     });
@@ -250,7 +239,7 @@ describe('WebhooksService', () => {
     it('reports unmatched for an unknown waybill', async () => {
       manager.findOne.mockResolvedValue(null);
 
-      const outcome = await service.handleDelhivery(payload('DL') as never);
+      const outcome = await service.handleDelhivery(payload('DL'));
 
       expect(outcome).toBe('unmatched');
       expect(walletCredit.creditReferralForDeliveredOrder).not.toHaveBeenCalled();
@@ -259,7 +248,7 @@ describe('WebhooksService', () => {
 
   describe('handleMsg91', () => {
     it('records a delivery report with no state change', async () => {
-      const outcome = await service.handleMsg91({ requestId: 'req-1' } as never);
+      const outcome = await service.handleMsg91({ requestId: 'req-1' });
 
       expect(outcome).toBe('processed');
       expect(idempotency.ingest).toHaveBeenCalledWith(
@@ -270,7 +259,7 @@ describe('WebhooksService', () => {
     });
 
     it('falls back to message_id for de-duplication', async () => {
-      await service.handleMsg91({ message_id: 'msg-9' } as never);
+      await service.handleMsg91({ message_id: 'msg-9' });
 
       expect(idempotency.ingest).toHaveBeenCalledWith(
         expect.objectContaining({ eventId: 'msg-9' }),

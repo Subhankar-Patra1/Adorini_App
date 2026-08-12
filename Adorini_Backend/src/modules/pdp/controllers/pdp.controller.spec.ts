@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { PdpController } from './pdp.controller';
 import { PdpService } from '../services/pdp.service';
@@ -47,8 +48,20 @@ describe('PdpController', () => {
     const dto = { requestedSize: '50', contactPhone: '919876543210' } as CreateSizeEnquiryDto;
     service.createSizeEnquiry.mockResolvedValue({});
 
-    await controller.createSizeEnquiry('some-kurti', dto);
+    await controller.createSizeEnquiry('some-kurti', dto, undefined);
 
-    expect(service.createSizeEnquiry).toHaveBeenCalledWith('some-kurti', dto);
+    expect(service.createSizeEnquiry).toHaveBeenCalledWith('some-kurti', dto, null);
+  });
+
+  it('attributes the enquiry when a signed-in buyer submits it', async () => {
+    // The route is public so a first-time visitor can still enquire, but an
+    // enquiry from a known customer should reach the admin inbox attached to
+    // their account rather than as an anonymous phone number.
+    const dto = { requestedSize: '50', contactPhone: '919876543210' } as CreateSizeEnquiryDto;
+    service.createSizeEnquiry.mockResolvedValue({});
+
+    await controller.createSizeEnquiry('some-kurti', dto, { id: 'user-1' });
+
+    expect(service.createSizeEnquiry).toHaveBeenCalledWith('some-kurti', dto, 'user-1');
   });
 });

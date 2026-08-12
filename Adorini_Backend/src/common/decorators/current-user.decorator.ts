@@ -28,3 +28,19 @@ export const CurrentUser = createParamDecorator(
     return request.user;
   },
 );
+
+/**
+ * The caller if they happen to be signed in, otherwise `undefined`.
+ *
+ * For `@Public()` routes that behave better with an identity but must still
+ * work without one — a size enquiry from a known customer should be attributed
+ * to them, while a first-time visitor must still be able to send one.
+ *
+ * Distinct from `@CurrentUser()` rather than a flag on it, so a handler that
+ * genuinely requires a user cannot silently start accepting anonymous callers
+ * because someone changed an argument.
+ */
+export const OptionalUser = createParamDecorator(
+  (_data: unknown, ctx: ExecutionContext): AuthUser | undefined =>
+    ctx.switchToHttp().getRequest<AuthenticatedRequest>().user,
+);

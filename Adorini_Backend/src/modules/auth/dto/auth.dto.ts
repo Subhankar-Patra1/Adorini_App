@@ -2,6 +2,7 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { phoneSchema } from '../../../common/utils/phone.util';
+import { ReferralOutcome } from '../referral-status';
 
 /**
  * Request DTOs. Zod is the single validation system (ADR-007) — never
@@ -70,7 +71,14 @@ export const loginResultSchema = z.object({
   refreshToken: z.string(),
   expiresIn: z.number().int(),
   isNewUser: z.boolean(),
+  /** True only when `referralStatus` is `APPLIED`. */
   referralApplied: z.boolean(),
+  /**
+   * Why the referral was or was not recorded, so the client can show an
+   * accurate message. `ALREADY_REFERRED` and `CODE_NOT_FOUND` in particular
+   * call for opposite advice — stop retrying, versus check the spelling.
+   */
+  referralStatus: z.enum(ReferralOutcome),
   user: publicUserSchema,
 });
 

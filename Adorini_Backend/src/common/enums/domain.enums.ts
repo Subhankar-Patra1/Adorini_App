@@ -75,6 +75,22 @@ export enum FitTag {
   RUNS_LARGE = 'RUNS_LARGE',
 }
 
+/**
+ * A return request's lifecycle.
+ *
+ * Deliberately separate from `OrderStatus`: an order that was delivered and
+ * then returned is still an order that was delivered, and folding returns into
+ * the order's status would erase that — along with the referral payout and the
+ * fit-accuracy signal that both hang off delivery.
+ */
+export enum ReturnStatus {
+  REQUESTED = 'REQUESTED',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  /** Goods received back; the point a refund becomes payable. */
+  COMPLETED = 'COMPLETED',
+}
+
 export enum SizeEnquiryStatus {
   OPEN = 'OPEN',
   RESPONDED = 'RESPONDED',

@@ -19,6 +19,7 @@ export interface LoginBody {
   expiresIn: number;
   isNewUser: boolean;
   referralApplied: boolean;
+  referralStatus: string;
   user: PublicUserBody;
 }
 

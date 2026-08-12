@@ -2,10 +2,99 @@
 
 ## Current Position
 
-- **Phase**: 4 — Feature Modules — 🔄 **IN PROGRESS**. `auth` and `users` ✅ complete & verified.
-- **Next**: `catalog` → `pdp` → `cart` → `checkout` → `orders` → `webhooks` → `wallet` → rest
+- **Phase**: 4 — Feature Modules — ✅ **COMMERCE COMPLETE**
+  - ✅ `auth`, `users`, `cart`, `checkout`, `orders`, `wallet`, `admin`, `returns`
+  - ✅ `catalog`, `pdp`, `webhooks` (parallel workstream, reviewed and integrated)
+  - ⬜ Deferred: `videos`, `jobs`, `whatsapp-bot` (see below)
+- **Next**: live credential smoke test, then the gates (`@SEC` → `@ETHICS` → `@QA`)
 - **Active agent**: `@BE`
-- **Blockers**: none. Credentials still outstanding; they do not block further Phase 4 work.
+- **Blockers**: none.
+
+**Current totals**: **491 unit tests** (36 suites) · **124 integration tests** (8 suites) · **56 routes** ·
+tsc clean · lint clean · 0 vulnerabilities · no schema drift.
+
+A buyer can now: sign up → browse → view a product → add to cart → check out (COD or prepaid) →
+verify COD by OTP → track the order → change the delivery address before dispatch → cancel → request a
+return. Staff can manage the catalogue and the enquiry inbox.
+
+---
+
+## Phase 4 — Commerce Modules (2026-08-12)
+
+### @GUARD mitigations — all five now implemented and test-proven
+
+| Risk | Where | Proof |
+| --- | --- | --- |
+| **#1 CRITICAL** webhook idempotency | `webhooks` | Marker row + side effects in one transaction; replay credits once |
+| **#2 HIGH** address-edit race | `orders` | Status re-read under `FOR UPDATE` immediately before write; a dispatched order returns `ADDRESS_LOCKED` and the stored address is unchanged |
+| **#3 HIGH** server-authoritative pricing | `cart`/`checkout` | The place DTO has **no price field**; an integration test posts `totalPaise: 1` and the order still costs the correct amount |
+| **#4 MEDIUM** catalog indexes | `catalog` | Present since Phase 2; planner verified |
+| **#5 MEDIUM** `size_rules` validation | `admin` | Malformed charts rejected on write; a chart contradicting the product's fabric is refused |
+
+### Modules delivered
+
+- **`cart`** — new `cart_items` table. Stores no prices (ADR-022); every read is live. Repeat adds merge,
+  size/colour changes re-point the line and merge on collision.
+- **`checkout`** — `PricingService` shared with the cart so quote and charge cannot diverge (ADR-023).
+  Locks variants in id order, decrements conditionally (ADR-024), writes order + lines + wallet debit and
+  empties the cart in one transaction. COD routes through an intent OTP reusing the auth module's
+  `OtpService`, namespaced per order so a login code cannot confirm an order.
+- **`orders`** — history, detail, pre-dispatch address edit (Risk #2), cancellation that restocks and
+  refunds store credit in the same transaction.
+- **`wallet`** — balance (spendable *and* pending referral credit, shown separately) and the statement.
+- **`admin`** — product/variant CRUD, enquiry inbox, `AdminGuard` reading `is_admin` per request (ADR-027).
+- **`returns`** — new `return_requests` table. Per order line, 3-day window from delivery, sizing reasons
+  auto-derive their fit tag (ADR-026).
+
+### Bug found and fixed during this work
+
+**The exception filter was discarding every service-supplied error code** (ADR-025). Modules raise
+`ADDRESS_LOCKED`, `INSUFFICIENT_STOCK`, `OTP_COOLDOWN` and so on precisely so a client can branch on
+them; the filter overwrote each with the generic status name. Nothing failed — the API returned correct
+statuses and quietly threw away its entire machine-readable vocabulary. Caught only because the commerce
+journey test asserted the code rather than the status.
+
+### Deliberately not built
+
+- **`videos`** — the reels feed is a content feature, not part of the purchase path.
+- **`jobs`** — scheduling is blocked on an open business decision (referral-claim expiry; see below).
+  `TokenService.purgeExpiredBefore()` and a referral sweep are the two jobs waiting for it.
+- **`whatsapp-bot`** — boilerplate only, by earlier decision.
+- **Refunds** — returns record and approve, but move no money (ADR-026).
+
+### Open business questions
+
+1. **`DELIVERY_FEE_PAISE` defaults to ₹49 and is a placeholder.** The PRD fixes the free-delivery
+   *threshold* (₹3,000) but never states the fee. Every buyer under the threshold is charged it.
+2. **Referral-claim expiry** — a `PENDING` referral currently never expires, so it is both an open
+   liability and a permanent block on that phone being referred again. Raised with the user; deferred.
+
+---
+
+## Cross-Workstream Integration Review (2026-08-12)
+
+`catalog`, `pdp`, `webhooks`, `orders` and `wallet` were built in parallel with `auth`/`users`. Reviewing
+them together surfaced five defects, all in the seams between the two workstreams rather than inside
+either one. The parallel modules themselves are well built — idempotent webhook ingestion, pessimistic
+locking on the money path, cursor pagination, careful 2xx-on-duplicate handling.
+
+| # | Defect | Impact | Fix |
+| --- | --- | --- | --- |
+| 1 | **No `@Public()` on catalog/pdp/webhooks** | **The entire storefront returned 401**, and all three provider webhooks were rejected before their own auth ran — payments unconfirmed, referrals unpaid | `@Public()` added; regression spec now asserts the public surface (ADR-016) |
+| 2 | **Referral payout could never fire** | `qualifyingOrderId` is read but never written; every payout silently found nothing | Fallback resolves the referee's `PENDING` referral via the order (ADR-018) |
+| 3 | **`ZodError` → 500 on webhooks** | A 5xx tells providers to redeliver, so an unparseable payload would retry forever | Mapped to 400 (ADR-019) |
+| 4 | **`search_vector` unmapped** | `migration:generate` emitted `DROP COLUMN "search_vector"`; drift check permanently red | Mapped read-only (ADR-020) |
+| 5 | **`AddProductSearchVector` never applied locally** | Catalog search would 500 | Migration run; verified backfilled and matching |
+
+Two smaller ones: the size-enquiry DTO reimplemented phone normalisation with rules that diverged from
+`phone.util` (`09876543210` passed through unnormalised, so one buyer could appear twice in the admin
+inbox) — now uses the shared schema; and size enquiries hardcoded `userId: null`, so a signed-in buyer's
+enquiry lost its attribution — now populated via `@OptionalUser()` (ADR-017).
+
+**Checked and found correct**: webhook idempotency (marker inserted in the same transaction as the side
+effects, Redis failing open), duplicate-detection via `driverError.code` (verified `23505` is present on
+both `error.code` and `error.driverError.code` against the live driver), `rawBody: true` for Cashfree
+signature verification, and the MSG91 payload schema's `refine` that guarantees a de-duplication key.
 
 ---
 
@@ -58,6 +147,16 @@ the signup transaction).
 - **`POST /addresses/:id/default` returned 201** — Nest defaults POST to 201, but nothing is created.
   Corrected to 200 with `@HttpCode`.
 - **MSG91 reports success for invalid credentials** (see ADR-014) — a live-fire finding, not a code bug.
+
+### Rules for every module built from here
+
+1. **Public routes need `@Public()` and an entry in `public-routes.integration.spec.ts`.** Auth is
+   fail-closed; forgetting it is a 401, and the spec is what catches it (ADR-016).
+2. **`checkout` must set `Referral.qualifyingOrderId`** on the referee's first order. There is now a
+   fallback so payouts work without it (ADR-018), but the explicit link is still the authoritative one.
+3. **Parse request bodies through DTOs where possible.** Hand-parsed schemas now map to 400 rather than
+   500 (ADR-019), but the pipe is still the better path.
+4. **Never map a trigger-maintained column as writable** — and never leave it unmapped either (ADR-020).
 
 ### Deliberately not built
 

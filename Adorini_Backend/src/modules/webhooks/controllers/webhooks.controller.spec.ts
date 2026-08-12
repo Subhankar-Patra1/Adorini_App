@@ -1,6 +1,7 @@
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { WebhooksController } from './webhooks.controller';
 import type { Env } from '../../../config/env.validation';
@@ -81,9 +82,9 @@ describe('WebhooksController', () => {
     it.each([undefined, ''])('rejects a missing signature header (%s)', async (signature) => {
       payments.verifyWebhookSignature.mockReturnValue(false);
 
-      await expect(
-        controller.cashfree(rawRequest(cashfreeBody), signature, '1'),
-      ).rejects.toThrow(UnauthorizedException);
+      await expect(controller.cashfree(rawRequest(cashfreeBody), signature, '1')).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
 
     it('rejects a request with no body', async () => {

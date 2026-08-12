@@ -11,9 +11,7 @@ import { Review } from '../../database/entities/review.entity';
 import { SizeEnquiry } from '../../database/entities/size-enquiry.entity';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Product, ProductVariant, MediaAsset, Review, SizeEnquiry]),
-  ],
+  imports: [TypeOrmModule.forFeature([Product, ProductVariant, MediaAsset, Review, SizeEnquiry])],
   controllers: [PdpController],
   providers: [PdpService, SizeChartService],
 })

@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { DataSource, QueryFailedError } from 'typeorm';
 
 import { WebhookIdempotencyService } from './webhook-idempotency.service';
@@ -30,9 +31,7 @@ describe('WebhookIdempotencyService', () => {
       save: jest.fn((_entity: unknown, value: unknown) => value),
       create: jest.fn((_entity: unknown, value: unknown) => value),
     };
-    transaction = jest.fn(
-      async (cb: (m: typeof manager) => Promise<unknown>) => await cb(manager),
-    );
+    transaction = jest.fn(async (cb: (m: typeof manager) => Promise<unknown>) => await cb(manager));
     redis = { exists: jest.fn().mockResolvedValue(0), setex: jest.fn().mockResolvedValue('OK') };
 
     const module: TestingModule = await Test.createTestingModule({

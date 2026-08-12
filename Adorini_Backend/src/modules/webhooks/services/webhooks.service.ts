@@ -2,11 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 
 import { WebhookIdempotencyService } from './webhook-idempotency.service';
-import {
-  OrderStatus,
-  PaymentStatus,
-  WebhookProvider,
-} from '../../../common/enums/domain.enums';
+import { OrderStatus, PaymentStatus, WebhookProvider } from '../../../common/enums/domain.enums';
 import { Order } from '../../../database/entities/order.entity';
 import { statusAfterSuccessfulPayment } from '../../orders/services/order-state-machine';
 import { OrderTransitionService } from '../../orders/services/order-transition.service';
@@ -175,8 +171,7 @@ export class WebhooksService {
     }
 
     const { changed } = await this.orderTransitions.transition(manager, order.id, target, {
-      cancellationReason:
-        target === OrderStatus.CANCELLED ? `Delhivery ${statusType}` : undefined,
+      cancellationReason: target === OrderStatus.CANCELLED ? `Delhivery ${statusType}` : undefined,
     });
 
     /**

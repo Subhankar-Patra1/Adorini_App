@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { IllegalOrderTransitionError } from './order-state-machine';
 import { OrderTransitionService } from './order-transition.service';

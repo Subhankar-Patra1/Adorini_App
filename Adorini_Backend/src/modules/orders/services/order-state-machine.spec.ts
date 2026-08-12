@@ -45,9 +45,9 @@ describe('order state machine', () => {
     });
 
     it('names both states and the order in the error', () => {
-      expect(() =>
-        assertTransition(OrderStatus.DELIVERED, OrderStatus.SHIPPED, 'order-9'),
-      ).toThrow(/order-9 cannot move from DELIVERED to SHIPPED/);
+      expect(() => assertTransition(OrderStatus.DELIVERED, OrderStatus.SHIPPED, 'order-9')).toThrow(
+        /order-9 cannot move from DELIVERED to SHIPPED/,
+      );
     });
   });
 

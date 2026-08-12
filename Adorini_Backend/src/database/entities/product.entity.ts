@@ -93,6 +93,32 @@ export class Product extends BaseEntity {
   @Column({ type: 'jsonb', nullable: true })
   sizeRules: SizeRules | null;
 
+  /**
+   * Full-text search document, maintained entirely by a database trigger
+   * (migration `AddProductSearchVector`) and queried as raw SQL by the catalog.
+   *
+   * Mapped here purely so TypeORM knows the column exists. While it was
+   * unmapped, `migration:generate` treated it as drift and emitted
+   * `DROP COLUMN "search_vector"` — so the next unrelated migration anyone
+   * generated would have silently deleted search, and the schema-drift check
+   * we rely on as a correctness signal was permanently red.
+   *
+   * `insert`/`update` are false because the trigger owns the value: writing it
+   * from the application would fight the trigger and could persist a stale
+   * document. `select: false` keeps a large tsvector out of every product read.
+   * The GIN index is `synchronize: false` because TypeORM would otherwise try
+   * to recreate it as a btree.
+   */
+  @Index('idx_products_search_vector', { synchronize: false })
+  @Column({
+    type: 'tsvector',
+    nullable: true,
+    select: false,
+    insert: false,
+    update: false,
+  })
+  searchVector: string | null;
+
   @Column({ type: 'boolean', default: true })
   isActive: boolean;
 

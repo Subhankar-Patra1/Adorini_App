@@ -2,22 +2,19 @@ import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { SizeEnquiryStatus } from '../../../common/enums/domain.enums';
+import { phoneSchema } from '../../../common/utils/phone.util';
 
 /**
- * Normalised to E.164 without the `+`, matching `User.phone` — a bare
- * 10-digit Indian mobile gains the `91` country code. Storing raw input would
- * let `+91 98765 43210` and `9876543210` become two enquiries the admin inbox
- * shows as unrelated people.
+ * Normalised to E.164 without the `+`, matching `User.phone`.
+ *
+ * Uses the shared `phoneSchema` rather than a local normaliser so enquiry
+ * contacts and account phones agree exactly. An earlier local version passed
+ * unrecognised input straight through, which meant `09876543210` was stored
+ * verbatim while `9876543210` became `919876543210` — the same buyer appearing
+ * in the admin inbox as two unrelated people, which is the precise failure the
+ * comment above it warned about.
  */
-const contactPhoneSchema = z
-  .string()
-  .transform((raw) => {
-    const digits = raw.replace(/\D/g, '');
-    return /^[6-9]\d{9}$/.test(digits) ? `91${digits}` : digits;
-  })
-  .refine((digits) => /^\d{10,15}$/.test(digits), {
-    error: 'contactPhone must be a valid phone number',
-  });
+const contactPhoneSchema = phoneSchema;
 
 export const createSizeEnquirySchema = z.object({
   /**

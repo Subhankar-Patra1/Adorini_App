@@ -155,6 +155,126 @@ Unknown codes and already-referred phones both yield `referralApplied: false` wi
 
 Nothing is credited here. Payout on `DELIVERED` belongs to `wallet`/`webhooks` (@GUARD Risk #1).
 
+## ADR-016: `@Public()` is a load-bearing declaration, and it is tested
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Forced by**: the entire storefront returning 401
+
+The fail-closed global guard (ADR-013) has a sharp edge, and it cut immediately. `catalog`, `pdp` and `webhooks` were built in parallel with auth and shipped without `@Public()`. The result, verified live: **every storefront route returned 401**, and **all three provider webhooks were rejected with "Missing bearer token"** before reaching their own signature and shared-secret checks. Cashfree and Delhivery would have retried, given up, and left payments unconfirmed and referrals unpaid.
+
+Nothing in the unit suite could catch it — each controller was correct, the guard was correct, only the *composition* was wrong.
+
+**Chosen**: keep fail-closed (a forgotten `@Public()` is a loud 401; the opt-in alternative fails by silently exposing data), and add `common/guards/public-routes.integration.spec.ts`, which asserts the public surface against the real `AppModule`. It distinguishes the guard's own rejection ("Missing bearer token") from an endpoint's own authentication, so a webhook route that regresses is caught even though it still answers 401.
+
+**Consequence**: every new public-facing controller needs `@Public()` *and* an entry in that spec.
+
+## ADR-017: Public routes still identify the caller
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`@Public()` originally short-circuited the guard entirely, so `request.user` was never populated even when a valid token was sent. That made "public" mean "anonymous", which is wrong for routes that work either way: `SizeEnquiry.userId` is nullable so a first-time visitor can ask about a size, but an enquiry from a known customer should reach the admin inbox attached to their account.
+
+**Chosen**: on a public route the guard still decodes a supplied token on a best-effort basis and attaches the user. An invalid or expired token is ignored rather than rejected — the endpoint never required authentication, and rejecting would make a stale session *worse* than no session on a public page. `@OptionalUser()` exposes it, kept separate from `@CurrentUser()` so a handler that genuinely requires a user cannot start accepting anonymous callers by changing an argument.
+
+## ADR-018: Referral payout resolves through the referee, not only an order link
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Forced by**: a silent no-op
+
+`WalletCreditService` looked referrals up by `qualifyingOrderId`, but **nothing writes that column**: signup records the referral before any order exists, and order placement lives in `checkout`, which is not built. Every payout would have found nothing. The feature would have looked complete, cost nothing, and paid no one — and no test would have caught it, because the module meant to set the link does not exist to be tested.
+
+**Chosen**: resolve the explicit link first, then fall back to the referee's own `PENDING` referral via the order's buyer, recording `qualifyingOrderId` when the fallback matches. The fallback also expresses the business rule more directly — the reward is for the referee's first *delivered* order, and the `PENDING` filter says exactly that, since a paid referral becomes `CREDITED` and later deliveries match nothing.
+
+## ADR-019: Hand-parsed schemas map to 400, not 500
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+The webhook controllers call `schema.parse()` directly — they must authenticate the caller before trusting the body enough to validate it — so `ZodValidationPipe`, which only covers `@Body()` DTOs, never sees it. A raw `ZodError` escaped as a 500.
+
+That is worse than untidy for webhooks specifically: a non-2xx tells the provider to redeliver, so a malformed payload would be retried indefinitely. `AllExceptionsFilter` now maps `ZodError` to **400**, which says "permanently bad, stop sending it".
+
+## ADR-020: `search_vector` is mapped read-only so the drift check stays honest
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+The trigger-maintained `products.search_vector` column was deliberately left off the entity. The cost only showed up in `migration:generate`, which treated it as drift and emitted `DROP COLUMN "search_vector"` plus a drop of its GIN index — so the next unrelated migration anyone generated would have silently deleted full-text search, and the "no drift" check the project has used as a correctness signal since Phase 2 was permanently red.
+
+**Chosen**: map it with `insert: false, update: false` (the trigger owns the value), `select: false` (keep a large tsvector out of every product read), and `@Index(..., { synchronize: false })` so TypeORM does not try to recreate a GIN index as a btree. Drift is clean again.
+
+## ADR-021: Referral capture reports a reason, not just a boolean
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`referralApplied: false` was returned for six distinct situations — no code given, a typo, a self-referral, a phone already referred, a sign-in rather than a signup, and an internal failure. The client could not tell them apart, so it could only ever show one message.
+
+That collapses two cases needing **opposite advice**. Referral uniqueness is on the phone number and survives account deletion (ADR-008), so a buyer holding a genuinely valid code from a friend can legitimately hit "already referred" long after the fact. Told "invalid code", she retypes it, fails identically, and contacts support — while someone who actually made a typo sees the same thing and is given no reason to look closer.
+
+**Chosen**: add `referralStatus: ReferralOutcome` alongside the boolean, covering every path: `APPLIED`, `NOT_PROVIDED`, `CODE_NOT_FOUND`, `SELF_REFERRAL`, `ALREADY_REFERRED`, `EXISTING_USER`, `UNAVAILABLE`. The boolean is retained for convenience and derived from the enum through a single helper, so the two cannot drift apart.
+
+Named `ReferralOutcome` because `ReferralStatus` is already the persisted lifecycle (`PENDING` → `CREDITED`/`VOID`) in `domain.enums.ts`. This one is never stored — it describes a single signup attempt.
+
+**Consequence**: the source of a code is explicitly irrelevant — a deep-link capture and a hand-typed code are the same request — but the *timing* is not. Referrals attach only at account creation, so the client must send the code with `otp/verify`; there is deliberately no endpoint to apply one afterwards, since that would let a code be claimed days later and is far harder to police.
+
+## ADR-022: The cart stores no prices
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`cart_items` holds a user, a variant and a quantity — nothing about money. Every price is read live from the catalogue on each cart read, and recomputed again under a row lock at placement.
+
+**Rationale**: a stored price is a promise the checkout may refuse to keep. If an admin reprices a garment after it was added, a cached cart price would show one number and charge another — and the only way to make that consistent would be to honour the stale price, which is a business decision the code should not be making silently.
+
+**Consequence**: a cart's total can change between visits. That is correct — the shop's price is the price — and the cart response carries live `stockQuantity` and `inStock` per line so the client can show what moved.
+
+**Deviation from the approved architecture**: the plan specified "Redis session cache + Postgres sync" for the cart. Implemented as Postgres-only. Caching computed totals directly contradicts server-authoritative pricing (@GUARD Risk #3), and a cache that must be invalidated on every price, stock and catalogue change is a correctness liability for a saving that does not matter at MVP traffic. Revisit if cart reads become a measured bottleneck.
+
+## ADR-023: One pricing implementation, shared by quote and placement
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+`PricingService` is the only place order money is computed. Both `GET /checkout/quote` and `POST /checkout/place` call it.
+
+Two implementations would drift, and the drift would surface as a customer being charged something other than what they agreed to — the single worst class of bug in a commerce system. The service takes quantities and a wallet-credit *request*; it derives subtotal, discount, delivery and total itself. The `place` DTO has no price field of any kind, so there is nothing for a tampered payload to change (@GUARD Risk #3).
+
+Two ordering decisions inside it are deliberate:
+- **Free delivery is measured on the subtotal, before discount.** Measuring after would let a buyer's own first-order discount push a qualifying order back under the threshold and re-add a fee they were already told they had escaped.
+- **Wallet credit is clamped to what is still owed**, not merely to the balance. Without that, a large balance on a small order produces a negative total, which `chk_order_amounts_non_negative` rejects at the final INSERT — after stock has already been taken.
+
+## ADR-024: Stock is decremented conditionally, under a deterministic lock order
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Placement locks every variant in the cart with `SELECT … FOR UPDATE`, **ordered by id**, then decrements with `WHERE stock_quantity >= :quantity` and checks the affected row count.
+
+The lock ordering is not incidental: two carts sharing two variants in opposite orders would deadlock, and Postgres would abort one at random — turning a busy checkout into sporadic, unreproducible failures. Sorting the ids gives every transaction the same acquisition sequence.
+
+The conditional `WHERE` is the actual oversell guard; `chk_variant_stock_non_negative` is the backstop beneath it. Products are joined but not locked, so unrelated carts sharing a product do not serialise.
+
+## ADR-025: The exception filter preserves service-supplied error codes
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Forced by**: a failing integration test
+
+Services throughout raise `{ code: 'ADDRESS_LOCKED', message: … }`, `INSUFFICIENT_STOCK`, `OTP_COOLDOWN`, `RETURN_WINDOW_CLOSED` and so on, so a client can branch on the reason. `AllExceptionsFilter` was overwriting every one of them with the generic status name — so `ADDRESS_LOCKED` reached the app as `CONFLICT`.
+
+Nothing failed loudly. The API looked fine, returned the right status, and quietly discarded the entire machine-readable vocabulary the modules had been written around. Caught only because the commerce journey test asserted the code rather than the status.
+
+**Chosen**: a `code` present on the thrown payload wins; the status name remains the fallback.
+
+## ADR-026: Returns are per order line, and no money moves on review
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+A `ReturnRequest` references an `OrderItem`, not an `Order` — a buyer returning one of three kurtis must not mark the whole order returned. Returns are likewise **not** an `OrderStatus`: "was this ever delivered?" has to stay answerable from the order alone, because both the referral payout and the fit-accuracy signal hang off delivery.
+
+The 3-day window is measured from `deliveredAt`, never from placement — measuring from placement would silently shrink the window by however long shipping took, so a slow delivery would cost the buyer their right to return.
+
+**Approving a return moves no money.** Refunds need the Cashfree refund API for prepaid and a manual path for COD, neither of which exists yet. Issuing wallet credit instead would quietly convert a cash refund into store credit, which is a business decision rather than an implementation detail.
+
+## ADR-027: `AdminGuard` reads `is_admin` per request
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+The admin guard queries the database on every request rather than trusting a token claim.
+
+Access tokens carry only `sub` and live 15 minutes (ADR-013). An `isAdmin` claim would therefore keep working for a quarter of an hour after someone's access was revoked — and these endpoints can reprice the entire catalogue and read every buyer's contact details from the enquiry inbox. Admin traffic is low enough that the extra read costs nothing that matters.
+
 ## ADR-005: Backend-first build, Flutter integrates after
 
 **Date**: 2026-08-10 · **Status**: Accepted

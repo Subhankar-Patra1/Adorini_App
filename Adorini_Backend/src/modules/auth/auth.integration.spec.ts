@@ -440,6 +440,7 @@ describe('auth (integration)', () => {
 
       expect(body.isNewUser).toBe(true);
       expect(body.referralApplied).toBe(false);
+      expect(body.referralStatus).toBe('CODE_NOT_FOUND');
     });
 
     it('refuses a second referral for a phone that was already referred', async () => {
@@ -455,6 +456,32 @@ describe('auth (integration)', () => {
 
       expect(again.isNewUser).toBe(true);
       expect(again.referralApplied).toBe(false);
+      // The buyer did nothing wrong — the app must say the offer is used up,
+      // not that the code is invalid, or they will retype it and then call us.
+      expect(again.referralStatus).toBe('ALREADY_REFERRED');
+    });
+
+    it('distinguishes a typo from an exhausted offer', async () => {
+      const typo = await login(PHONE, { referralCode: 'NOTAREAL' });
+
+      expect(typo.referralStatus).toBe('CODE_NOT_FOUND');
+    });
+
+    it('reports NOT_PROVIDED when the buyer skips the code', async () => {
+      const plain = await login(PHONE);
+
+      expect(plain.referralStatus).toBe('NOT_PROVIDED');
+    });
+
+    it('reports EXISTING_USER when a code arrives on a later sign-in', async () => {
+      const code = await createReferrerWithCode();
+      await login(PHONE);
+      await clearRateLimits();
+
+      const signIn = await login(PHONE, { referralCode: code });
+
+      expect(signIn.isNewUser).toBe(false);
+      expect(signIn.referralStatus).toBe('EXISTING_USER');
     });
   });
 });

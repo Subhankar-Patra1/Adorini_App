@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { WalletCreditService } from './wallet-credit.service';
 import { ReferralStatus, WalletTransactionType } from '../../../common/enums/domain.enums';
@@ -42,6 +43,74 @@ describe('WalletCreditService', () => {
 
     expect(result).toEqual({ outcome: 'no_referral' });
     expect(manager.save).not.toHaveBeenCalled();
+  });
+
+  describe('resolving which referral a delivery settles', () => {
+    /**
+     * Nothing currently writes `Referral.qualifyingOrderId` — signup records the
+     * referral before any order exists, and order placement lives in `checkout`,
+     * which is not built yet. Without the fallback below every payout would
+     * silently find nothing: the feature would look finished and pay no one.
+     */
+    it('falls back to the referee’s outstanding referral when no order link exists', async () => {
+      manager.findOne
+        .mockResolvedValueOnce(null) // no qualifyingOrderId link
+        .mockResolvedValueOnce({ id: 'order-1', userId: 'user-referee' }) // the order
+        .mockResolvedValueOnce(referral({ qualifyingOrderId: null })) // by referee
+        .mockResolvedValueOnce({ id: 'wallet-1', userId: 'user-referrer', balancePaise: 0 });
+
+      const result = await service.creditReferralForDeliveredOrder(manager as never, 'order-1');
+
+      expect(result).toMatchObject({ outcome: 'credited', creditPaise: 10_000 });
+    });
+
+    it('only considers a PENDING referral for that referee', async () => {
+      // Once paid the referral is CREDITED, so a later delivery by the same
+      // buyer must not pay again.
+      manager.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'order-1', userId: 'user-referee' })
+        .mockResolvedValueOnce(null);
+
+      await service.creditReferralForDeliveredOrder(manager as never, 'order-1');
+
+      expect(manager.findOne).toHaveBeenLastCalledWith(Referral, {
+        where: { refereeId: 'user-referee', status: ReferralStatus.PENDING },
+        lock: { mode: 'pessimistic_write' },
+      });
+    });
+
+    it('records which order qualified when resolved by fallback', async () => {
+      const found = referral({ qualifyingOrderId: null });
+      manager.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: 'order-9', userId: 'user-referee' })
+        .mockResolvedValueOnce(found)
+        .mockResolvedValueOnce({ id: 'wallet-1', userId: 'user-referrer', balancePaise: 0 });
+
+      await service.creditReferralForDeliveredOrder(manager as never, 'order-9');
+
+      expect(found.qualifyingOrderId).toBe('order-9');
+    });
+
+    it('prefers an explicit order link when one exists', async () => {
+      manager.findOne
+        .mockResolvedValueOnce(referral())
+        .mockResolvedValueOnce({ id: 'wallet-1', userId: 'user-referrer', balancePaise: 0 });
+
+      await service.creditReferralForDeliveredOrder(manager as never, 'order-1');
+
+      // Only the link lookup and the wallet lookup — no order round trip.
+      expect(manager.findOne).toHaveBeenCalledTimes(2);
+    });
+
+    it('gives up quietly when the order itself is gone', async () => {
+      manager.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+      await expect(
+        service.creditReferralForDeliveredOrder(manager as never, 'order-1'),
+      ).resolves.toEqual({ outcome: 'no_referral' });
+    });
   });
 
   it.each([ReferralStatus.CREDITED, ReferralStatus.VOID])(
@@ -102,10 +171,11 @@ describe('WalletCreditService', () => {
         referenceId: 'ref-1',
       }),
     );
-    expect(manager.save).toHaveBeenCalledWith(
-      Referral,
-      expect.objectContaining({ status: ReferralStatus.CREDITED, creditedAt: expect.any(Date) }),
-    );
+    const saveCalls = manager.save.mock.calls as [unknown, Referral][];
+    const savedReferral = saveCalls.find((call) => call[0] === Referral)?.[1];
+
+    expect(savedReferral?.status).toBe(ReferralStatus.CREDITED);
+    expect(savedReferral?.creditedAt).toBeInstanceOf(Date);
   });
 
   it('mints a wallet on first credit when the referrer has none', async () => {

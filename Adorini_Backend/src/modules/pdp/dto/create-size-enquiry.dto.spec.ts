@@ -35,8 +35,6 @@ describe('createSizeEnquirySchema', () => {
   });
 
   it('rejects a message longer than the column allows', () => {
-    expect(() =>
-      createSizeEnquirySchema.parse({ ...valid, message: 'x'.repeat(1001) }),
-    ).toThrow();
+    expect(() => createSizeEnquirySchema.parse({ ...valid, message: 'x'.repeat(1001) })).toThrow();
   });
 });

@@ -36,6 +36,9 @@ import type { Env } from '../../config/env.validation';
   // TokenService is exported because JwtModule's configuration lives here;
   // later modules that need to mint or revoke sessions reuse it rather than
   // re-deriving the signing setup.
-  exports: [AuthService, TokenService, JwtModule],
+  // OtpService is exported so checkout can reuse it for COD intent
+  // verification — the same generation, hashing, attempt caps and cooldowns as
+  // login, rather than a second OTP implementation that would drift from it.
+  exports: [AuthService, TokenService, OtpService, JwtModule],
 })
 export class AuthModule {}

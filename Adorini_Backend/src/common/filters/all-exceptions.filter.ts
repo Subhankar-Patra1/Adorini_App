@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { QueryFailedError } from 'typeorm';
+import { ZodError } from 'zod';
 
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
 import { RedisProviderError } from '../../providers/redis/redis.service';
@@ -75,17 +76,50 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // rejections surfaced by ZodValidationPipe — already carries the right status.
     if (exception instanceof HttpException) {
       const response = exception.getResponse();
-      const message =
+      const payload =
         typeof response === 'string'
-          ? response
-          : ((response as { message?: string | string[] }).message ?? exception.message);
+          ? { message: response }
+          : (response as { message?: string | string[]; code?: string });
+
+      const message = payload.message ?? exception.message;
 
       return {
         status: exception.getStatus(),
-        code: httpExceptionCode(exception.getStatus()),
+        /**
+         * A `code` the thrower supplied wins over the generic status name.
+         *
+         * Services raise things like `ADDRESS_LOCKED`, `INSUFFICIENT_STOCK` and
+         * `OTP_COOLDOWN` precisely so the client can branch on them — a generic
+         * `CONFLICT` tells a Flutter screen nothing about whether to offer a
+         * retry, a different size, or a countdown. Overwriting it here silently
+         * discarded every one of those codes before they reached anyone.
+         */
+        code: payload.code ?? httpExceptionCode(exception.getStatus()),
         message: Array.isArray(message) ? message.join('; ') : message,
         // 5xx we raised ourselves is still worth a stack trace; 4xx is routine.
         logAsError: exception.getStatus() >= 500,
+      };
+    }
+
+    /**
+     * A schema parsed by hand rather than through a DTO — the webhook
+     * controllers do this, because they must authenticate the caller before
+     * trusting the body enough to validate it.
+     *
+     * `ZodValidationPipe` only covers `@Body()` DTOs, so without this branch a
+     * malformed payload escapes as a 500. That matters most for webhooks: a
+     * non-2xx tells the provider to redeliver, so a 500 would make Delhivery
+     * retry a payload that can never parse, indefinitely. A 400 says "this is
+     * permanently bad, stop sending it".
+     */
+    if (exception instanceof ZodError) {
+      return {
+        status: HttpStatus.BAD_REQUEST,
+        code: 'VALIDATION_FAILED',
+        message: exception.issues
+          .map((issue) => `${issue.path.join('.') || 'body'}: ${issue.message}`)
+          .join('; '),
+        logAsError: false,
       };
     }
 

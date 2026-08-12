@@ -1,4 +1,5 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 
 import { SizeChartService } from './size-chart.service';
 import { FabricType } from '../../../common/enums/domain.enums';
@@ -9,7 +10,7 @@ import type { Product } from '../../../database/entities/product.entity';
 type ChartInput = Pick<Product, 'id' | 'sizeRules' | 'fabricType'>;
 
 function product(sizeRules: SizeRules | null, fabricType = FabricType.RIGID): ChartInput {
-  return { id: 'p1', sizeRules, fabricType } as ChartInput;
+  return { id: 'p1', sizeRules, fabricType };
 }
 
 describe('SizeChartService', () => {

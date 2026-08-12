@@ -65,7 +65,7 @@
 
 ### Phase 4: Feature Modules — `src/modules/`
 
-**Status**: 🔄 In progress — `auth` + `users` ✅ complete & verified (see STATE.md)
+**Status**: ✅ Commerce complete — `auth`, `users`, `catalog`, `pdp`, `cart`, `checkout`, `orders`, `wallet`, `webhooks`, `admin`, `returns` all built and verified. `videos` / `jobs` deferred (see STATE.md). **All five @GUARD mitigations implemented and test-proven.**
 **Objective**: Domain logic, module by module. Each module = controller + DTOs (Zod) + service, verified via Swagger before moving on.
 **Build order** (dependency-driven):
 

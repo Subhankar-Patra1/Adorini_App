@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { CatalogService } from './catalog.service';
@@ -38,7 +39,7 @@ function buildQueryBuilderMock(): QueryBuilderMock {
 }
 
 function baseQuery(overrides: Partial<ListProductsQueryDto> = {}): ListProductsQueryDto {
-  return { sort: 'newest', limit: 2, ...overrides } as ListProductsQueryDto;
+  return { sort: 'newest', limit: 2, ...overrides };
 }
 
 function productFixture(overrides: Partial<Product> = {}): Product {
@@ -227,10 +228,9 @@ describe('CatalogService', () => {
       expect(productQb.andWhere).toHaveBeenCalledWith('product.fabricType = :fabricType', {
         fabricType: FabricType.RIGID,
       });
-      expect(productQb.andWhere).toHaveBeenCalledWith(
-        'product.printTechnique = :printTechnique',
-        { printTechnique: PrintTechnique.KALANKARI },
-      );
+      expect(productQb.andWhere).toHaveBeenCalledWith('product.printTechnique = :printTechnique', {
+        printTechnique: PrintTechnique.KALANKARI,
+      });
       expect(productQb.andWhere).toHaveBeenCalledWith('product.pricePaise >= :minPrice', {
         minPrice: 10000,
       });
