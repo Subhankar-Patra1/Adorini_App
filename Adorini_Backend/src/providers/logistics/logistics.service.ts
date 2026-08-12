@@ -141,6 +141,38 @@ export class LogisticsService {
     return parsed;
   }
 
+  /**
+   * Asks Delhivery to attempt delivery again on a parcel that came back
+   * undelivered — their NDR (non-delivery report) action endpoint.
+   *
+   * The same parcel and the same waybill: this is a redelivery, not a new
+   * shipment. Delhivery caps how many times it will reattempt before returning
+   * the parcel to origin, which is why callers must check
+   * `MAX_DELIVERY_ATTEMPTS` before asking rather than relying on this to refuse.
+   *
+   * ⚠️ Endpoint shape is written from Delhivery's published NDR API and has
+   * **not** been exercised against a live account — the business account is
+   * still pending. Confirm the path, payload key names, and the success shape
+   * on the first real integration test.
+   */
+  async requestReattempt(waybill: string): Promise<void> {
+    const url = `${this.baseUrl}/api/p/update`;
+
+    await this.request(
+      url,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          data: [{ waybill, act: 'RE-ATTEMPT' }],
+        }),
+      },
+      'requestReattempt',
+    );
+
+    this.logger.log(`Requested Delhivery reattempt for waybill ${waybill}`);
+  }
+
   /** Fetches tracking detail for a waybill. */
   async fetchTracking(waybill: string): Promise<DelhiveryTrackingResponse> {
     const url = `${this.baseUrl}/api/v1/packages/json/?waybill=${encodeURIComponent(waybill)}`;

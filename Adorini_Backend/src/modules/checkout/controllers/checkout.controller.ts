@@ -50,7 +50,7 @@ export class CheckoutController {
   })
   @ApiResponse({ status: 200, type: CartViewDto })
   quote(@CurrentUser() user: AuthUser, @Query() query: CartQueryDto): Promise<CartView> {
-    return this.cart.getCart(user.id, query.walletCreditPaise);
+    return this.cart.getCart(user.id, query.walletCreditPaise, query.couponCode);
   }
 
   @Post('place')
@@ -73,6 +73,7 @@ export class CheckoutController {
       addressId: dto.addressId,
       paymentMethod: dto.paymentMethod,
       walletCreditPaise: dto.walletCreditPaise,
+      couponCode: dto.couponCode,
     });
   }
 

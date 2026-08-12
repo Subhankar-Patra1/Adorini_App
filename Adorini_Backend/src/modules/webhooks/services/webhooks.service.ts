@@ -4,8 +4,10 @@ import type { EntityManager } from 'typeorm';
 import { WebhookIdempotencyService } from './webhook-idempotency.service';
 import { OrderStatus, PaymentStatus, WebhookProvider } from '../../../common/enums/domain.enums';
 import { Order } from '../../../database/entities/order.entity';
+import { DeliveryFailureService } from '../../orders/services/delivery-failure.service';
 import { statusAfterSuccessfulPayment } from '../../orders/services/order-state-machine';
 import { OrderTransitionService } from '../../orders/services/order-transition.service';
+import { OrdersService } from '../../orders/services/orders.service';
 import { WalletCreditService } from '../../wallet/services/wallet-credit.service';
 import type {
   CashfreeWebhookPayload,
@@ -15,6 +17,19 @@ import type {
 
 /** What the endpoint reports back. Every value is answered with a 2xx — see the controller. */
 export type WebhookOutcome = 'processed' | 'duplicate' | 'ignored' | 'unmatched';
+
+/**
+ * The Delhivery handler's result, carrying any work that must happen *after*
+ * the idempotent transaction commits.
+ *
+ * `promptOrder` is threaded through the return value rather than stored on the
+ * service because this is a singleton serving concurrent webhooks — instance
+ * state would leak one request's order into another request's prompt.
+ */
+interface DelhiveryApplyResult {
+  outcome: WebhookOutcome;
+  promptOrder?: Order;
+}
 
 /**
  * Delhivery's coded status types, which are stable where the prose `Status`
@@ -37,6 +52,37 @@ const DELHIVERY_STATUS_TYPE_MAP: Record<string, OrderStatus | undefined> = {
   LT: OrderStatus.CANCELLED, // Lost in transit.
 };
 
+/**
+ * `Status` values (the prose field, not `StatusType`) that mean the courier
+ * actually tried to hand the parcel over and could not.
+ *
+ * This distinction matters because Delhivery reports both "moving through the
+ * network" and "attempted and failed" under the same `StatusType: UD`. Mapping
+ * on `StatusType` alone — which is what this service did before — meant a
+ * failed attempt on an already-`SHIPPED` order was a no-op, so nobody was ever
+ * told and the stock stayed held indefinitely.
+ *
+ * Matched case-insensitively on a substring, because the prose varies by
+ * account configuration ("Undelivered", "Consignee Not Available", "Customer
+ * Refused"). Deliberately **not** used to distinguish *why* it failed: a buyer
+ * who was out and a buyer who refused both get the same prompt, and the ones
+ * who genuinely refused simply do not reply (ADR-033).
+ *
+ * ⚠️ Unverified against a live Delhivery account — confirm the exact prose on
+ * the first real integration test. An unrecognised `UD` falls through to the
+ * ordinary in-transit path, which is the safe direction to be wrong in.
+ */
+const FAILED_ATTEMPT_MARKERS = ['undeliver', 'not available', 'refus', 'declin', 'no response'];
+
+function isFailedDeliveryAttempt(statusType: string, statusText: string): boolean {
+  if (statusType !== 'UD') {
+    return false;
+  }
+
+  const text = statusText.toLowerCase();
+  return FAILED_ATTEMPT_MARKERS.some((marker) => text.includes(marker));
+}
+
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
@@ -45,6 +91,8 @@ export class WebhooksService {
     private readonly idempotency: WebhookIdempotencyService,
     private readonly orderTransitions: OrderTransitionService,
     private readonly walletCredit: WalletCreditService,
+    private readonly deliveryFailures: DeliveryFailureService,
+    private readonly orders: OrdersService,
   ) {}
 
   /**
@@ -87,7 +135,24 @@ export class WebhooksService {
       async (manager) => this.applyDelhivery(manager, payload),
     );
 
-    return ingest.status === 'duplicate' ? 'duplicate' : ingest.result;
+    if (ingest.status === 'duplicate') {
+      return 'duplicate';
+    }
+
+    /**
+     * Fired after `ingest` resolves, which is after its transaction committed.
+     *
+     * Threaded back through the return value rather than held on the service:
+     * this is a singleton handling concurrent webhooks, so instance state would
+     * leak one request's order into another's prompt. `promptBuyer` swallows its
+     * own failures, so an unreachable MSG91 cannot turn a correctly-recorded
+     * delivery failure into a non-2xx that Delhivery then redelivers.
+     */
+    if (ingest.result.promptOrder) {
+      await this.deliveryFailures.promptBuyer(ingest.result.promptOrder);
+    }
+
+    return ingest.result.outcome;
   }
 
   async handleMsg91(payload: Msg91WebhookPayload): Promise<WebhookOutcome> {
@@ -153,26 +218,67 @@ export class WebhooksService {
   private async applyDelhivery(
     manager: EntityManager,
     payload: DelhiveryWebhookPayload,
-  ): Promise<{ relatedEntityId: string | null; result: WebhookOutcome }> {
+  ): Promise<{ relatedEntityId: string | null; result: DelhiveryApplyResult }> {
     const { AWB, Status } = payload.Shipment;
     const order = await manager.findOne(Order, { where: { delhiveryWaybill: AWB } });
 
     if (!order) {
       this.logger.warn(`No order matches Delhivery waybill ${AWB}`);
-      return { relatedEntityId: null, result: 'unmatched' };
+      return { relatedEntityId: null, result: { outcome: 'unmatched' } };
     }
 
     const statusType = (Status.StatusType ?? '').toUpperCase();
+
+    /**
+     * A failed hand-over attempt, handled before the ordinary status map.
+     *
+     * Recorded inside this transaction so a redelivered webhook cannot
+     * double-count the attempt; the buyer prompt is fired by the controller
+     * *after* the commit, because messaging someone about a state change that
+     * then rolls back is worse than not messaging at all.
+     */
+    if (isFailedDeliveryAttempt(statusType, Status.Status ?? '')) {
+      if (order.status === OrderStatus.DELIVERY_FAILED) {
+        // Repeat scan of an attempt already recorded — the transition service
+        // would treat it as a no-op anyway, but returning early keeps the
+        // attempt counter honest.
+        this.logger.log(`Order ${order.orderNumber} already awaiting a delivery decision`);
+        return { relatedEntityId: order.id, result: { outcome: 'ignored' } };
+      }
+
+      const failed = await this.deliveryFailures.recordFailedAttempt(manager, order.id);
+
+      return {
+        relatedEntityId: order.id,
+        result: { outcome: 'processed', promptOrder: failed },
+      };
+    }
+
     const target = DELHIVERY_STATUS_TYPE_MAP[statusType];
 
     if (!target) {
       this.logger.log(`Delhivery status ${statusType || '(none)'} recorded without action`);
-      return { relatedEntityId: order.id, result: 'ignored' };
+      return { relatedEntityId: order.id, result: { outcome: 'ignored' } };
     }
 
     const { changed } = await this.orderTransitions.transition(manager, order.id, target, {
       cancellationReason: target === OrderStatus.CANCELLED ? `Delhivery ${statusType}` : undefined,
     });
+
+    /**
+     * The parcel is physically back with us, so its units are sellable again.
+     *
+     * This — not the cancellation — is the restock trigger for anything that
+     * was already dispatched (ADR-034). Runs whether or not `changed` is true:
+     * the order may already have been cancelled by the response-window sweep
+     * days earlier, and the goods still need putting back.
+     */
+    if (statusType === 'RT') {
+      const restocked = await this.orders.restockReturnedParcel(manager, order.id);
+      if (restocked) {
+        this.logger.log(`Returned parcel for ${order.orderNumber} put back on the shelf`);
+      }
+    }
 
     /**
      * The referral payout, in this same transaction (@GUARD Risk #1).
@@ -186,6 +292,6 @@ export class WebhooksService {
       this.logger.log(`Referral settlement for order ${order.orderNumber}: ${credit.outcome}`);
     }
 
-    return { relatedEntityId: order.id, result: 'processed' };
+    return { relatedEntityId: order.id, result: { outcome: 'processed' } };
   }
 }

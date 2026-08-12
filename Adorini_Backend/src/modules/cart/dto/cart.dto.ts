@@ -30,6 +30,8 @@ export const cartQuerySchema = z.object({
    * (@GUARD Risk #3).
    */
   walletCreditPaise: z.coerce.number().int().nonnegative().optional().default(0),
+  /** A candidate coupon code to preview. Eligibility is re-checked at placement — this is a preview only. */
+  couponCode: z.string().trim().min(1).max(32).optional(),
 });
 
 export class AddCartItemDto extends createZodDto(addCartItemSchema) {}
@@ -57,6 +59,8 @@ export const cartLineSchema = z.object({
 export const orderTotalsSchema = z.object({
   subtotalPaise: z.number().int(),
   discountPaise: z.number().int(),
+  /** Which promotion produced `discountPaise` — they never stack, see `PricingService`. */
+  discountSource: z.enum(['FIRST_ORDER', 'COUPON', 'NONE']),
   deliveryFeePaise: z.number().int(),
   walletCreditPaise: z.number().int(),
   totalPaise: z.number().int(),
@@ -69,6 +73,12 @@ export const cartViewSchema = z.object({
   items: z.array(cartLineSchema),
   totals: orderTotalsSchema,
   isPurchasable: z.boolean(),
+  /**
+   * Set only when a `couponCode` was supplied and rejected — explains why to
+   * the client. Silent when no code was given, and silent when the code
+   * worked (`totals.discountSource === 'COUPON'` already says so).
+   */
+  couponMessage: z.string().nullable(),
 });
 
 export class CartViewDto extends createZodDto(cartViewSchema) {}

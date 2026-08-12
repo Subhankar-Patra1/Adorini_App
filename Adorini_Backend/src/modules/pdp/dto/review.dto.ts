@@ -26,9 +26,25 @@ export const reviewSchema = z.object({
   media: z.array(mediaItemSchema),
 });
 
+export class ReviewDto extends createZodDto(reviewSchema) {}
+
 export const reviewListResponseSchema = z.object({
   items: z.array(reviewSchema),
   nextCursor: z.string().nullable(),
 });
 
 export class ReviewListResponseDto extends createZodDto(reviewListResponseSchema) {}
+
+/**
+ * Arrives as multipart/form-data alongside the photo files, so every field is
+ * a text value on the wire — `z.coerce` is load-bearing here, not stylistic.
+ */
+export const createReviewSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  body: z.string().trim().max(2000).optional(),
+  fitTag: z.enum(FitTag).optional(),
+  /** The size actually bought — a fit tag is meaningless without it. */
+  purchasedNominalSize: z.coerce.number().int().min(40).max(48).optional(),
+});
+
+export class CreateReviewDto extends createZodDto(createReviewSchema) {}

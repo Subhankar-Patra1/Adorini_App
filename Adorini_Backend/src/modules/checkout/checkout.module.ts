@@ -13,6 +13,7 @@ import { Wallet } from '../../database/entities/wallet.entity';
 import { WalletTransaction } from '../../database/entities/wallet-transaction.entity';
 import { AuthModule } from '../auth/auth.module';
 import { CartModule } from '../cart/cart.module';
+import { CouponsModule } from '../coupons/coupons.module';
 import { PaymentsModule } from '../../providers/payments/payments.module';
 import { SmsModule } from '../../providers/sms/sms.module';
 
@@ -31,6 +32,7 @@ import { SmsModule } from '../../providers/sms/sms.module';
     // Cart supplies both the items and the pricing rules, so the quote and the
     // charge cannot diverge.
     CartModule,
+    CouponsModule,
     // AuthModule exports OtpService — COD intent verification reuses the same
     // OTP machinery as login, including its attempt caps and cooldowns.
     AuthModule,

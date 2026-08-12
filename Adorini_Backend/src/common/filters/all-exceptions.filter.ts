@@ -13,6 +13,7 @@ import { ZodError } from 'zod';
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
 import { RedisProviderError } from '../../providers/redis/redis.service';
 import { SmsProviderError } from '../../providers/sms/sms.service';
+import { StorageProviderError } from '../../providers/storage/storage.service';
 
 /** Postgres unique-violation SQLSTATE. */
 const PG_UNIQUE_VIOLATION = '23505';
@@ -158,6 +159,15 @@ export class AllExceptionsFilter implements ExceptionFilter {
         status: HttpStatus.SERVICE_UNAVAILABLE,
         code: 'CACHE_UNAVAILABLE',
         message: 'A temporary storage error occurred. Please try again shortly.',
+        logAsError: true,
+      };
+    }
+
+    if (exception instanceof StorageProviderError) {
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        code: 'STORAGE_UNAVAILABLE',
+        message: 'Unable to upload the file right now. Please try again shortly.',
         logAsError: true,
       };
     }

@@ -80,7 +80,9 @@
 9. `wallet` — referral credit on `Delivered`, balance, coupons
 10. `returns`, `videos`, `admin`, `jobs`
 
-**Not built in this milestone**: `whatsapp-bot/` — directory structure is retained as boilerplate only. No controllers, services, or logic to be written (user decision, 2026-08-10). It is deliberately absent from `final_project_context.md`; do not add it there without explicit approval.
+~~**Not built in this milestone**: `whatsapp-bot/` — directory structure is retained as boilerplate only. No controllers, services, or logic to be written (user decision, 2026-08-10). It is deliberately absent from `final_project_context.md`; do not add it there without explicit approval.~~
+
+**Superseded 2026-08-12 (ADR-035).** `whatsapp-bot` is now built, with approval, scoped to **one conversation only**: interpreting a buyer's reply to the failed-delivery prompt (ADR-033). Chosen over an app deep link because the buyer being reached has just had a delivery go wrong, and requiring them to open and authenticate an app adds friction exactly where it costs most. It is **not** a general-purpose bot, and it is now recorded in `final_project_context.md` accordingly. Any expansion beyond this one flow is a fresh scope decision.
 
 **Carries @GUARD mitigations**:
 

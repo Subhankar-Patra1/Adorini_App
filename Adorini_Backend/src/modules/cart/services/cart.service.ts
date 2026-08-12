@@ -2,10 +2,11 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository, type EntityManager } from 'typeorm';
 
-import { PricingService, type OrderTotals } from './pricing.service';
+import { PricingService, type CouponDiscountInput, type OrderTotals } from './pricing.service';
 import { CartItem } from '../../../database/entities/cart-item.entity';
 import { Order } from '../../../database/entities/order.entity';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
+import { CouponsService } from '../../coupons/services/coupons.service';
 
 export interface CartLine {
   id: string;
@@ -29,6 +30,8 @@ export interface CartView {
   totals: OrderTotals;
   /** True when every line is still purchasable — checkout refuses otherwise. */
   isPurchasable: boolean;
+  /** Why a supplied coupon code was not applied; null when none was given or it worked. */
+  couponMessage: string | null;
 }
 
 /**
@@ -53,6 +56,7 @@ export class CartService {
     @InjectRepository(ProductVariant) private readonly variants: Repository<ProductVariant>,
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     private readonly pricing: PricingService,
+    private readonly coupons: CouponsService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -62,7 +66,11 @@ export class CartService {
    * Nothing about money is stored on the cart row, so a price change since the
    * item was added is reflected here rather than being discovered at checkout.
    */
-  async getCart(userId: string, requestedWalletCreditPaise = 0): Promise<CartView> {
+  async getCart(
+    userId: string,
+    requestedWalletCreditPaise = 0,
+    couponCode?: string,
+  ): Promise<CartView> {
     const items = await this.cartItems.find({
       where: { userId },
       order: { createdAt: 'ASC' },
@@ -73,6 +81,7 @@ export class CartService {
         items: [],
         totals: this.pricing.calculate({ lines: [], isFirstOrder: false }),
         isPurchasable: false,
+        couponMessage: null,
       };
     }
 
@@ -119,17 +128,38 @@ export class CartService {
     });
 
     const isFirstOrder = await this.isFirstOrder(userId);
+    const purchasableLines = lines.filter((l) => l.inStock);
+
+    let couponDiscount: CouponDiscountInput | null = null;
+    let couponMessage: string | null = null;
+
+    if (couponCode) {
+      const subtotalPaise = purchasableLines.reduce((sum, l) => sum + l.lineTotalPaise, 0);
+      const resolution = await this.coupons.preview(couponCode, userId, subtotalPaise);
+
+      if (resolution.applied) {
+        couponDiscount = {
+          discountType: resolution.coupon.discountType,
+          discountValue: resolution.coupon.discountValue,
+          maxDiscountPaise: resolution.coupon.maxDiscountPaise,
+        };
+      } else {
+        couponMessage = resolution.message;
+      }
+    }
 
     return {
       items: lines,
       totals: this.pricing.calculate({
         // Unbuyable lines are priced at zero above, so they cannot inflate a
         // total the buyer would then be asked to pay.
-        lines: lines.filter((l) => l.inStock),
+        lines: purchasableLines,
         isFirstOrder,
         requestedWalletCreditPaise,
+        couponDiscount,
       }),
       isPurchasable: lines.length > 0 && lines.every((l) => l.inStock),
+      couponMessage,
     };
   }
 

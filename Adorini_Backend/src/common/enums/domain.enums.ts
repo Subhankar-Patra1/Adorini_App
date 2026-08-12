@@ -16,6 +16,17 @@ export enum OrderStatus {
   PENDING_VERIFICATION = 'PENDING_VERIFICATION',
   CONFIRMED = 'CONFIRMED',
   SHIPPED = 'SHIPPED',
+  /**
+   * The courier attempted delivery and could not hand the parcel over, and we
+   * are waiting on the buyer to say whether they still want it.
+   *
+   * Deliberately **not** `CANCELLED`. A buyer who simply was not home must not
+   * be told their order is cancelled and then un-cancelled when they reply —
+   * that shock is the exact opposite of the reassurance this flow exists to
+   * provide. Cancellation happens only if they decline or go silent past the
+   * response window (see ADR-033).
+   */
+  DELIVERY_FAILED = 'DELIVERY_FAILED',
   DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
 }
@@ -120,4 +131,14 @@ export enum ReferralStatus {
   PENDING = 'PENDING',
   CREDITED = 'CREDITED',
   VOID = 'VOID',
+}
+
+/**
+ * A coupon discounts either a flat amount or a percentage. Mutually exclusive
+ * with the first-order discount at checkout — see `PricingService` — so a
+ * buyer never stacks two separate promotions into one order.
+ */
+export enum DiscountType {
+  PERCENT = 'PERCENT',
+  FLAT = 'FLAT',
 }

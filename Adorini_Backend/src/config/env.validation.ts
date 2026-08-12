@@ -119,6 +119,41 @@ export const envSchema = z.object({
   DELIVERY_FEE_PAISE: z.coerce.number().int().nonnegative().default(4900),
   FIRST_ORDER_DISCOUNT_PERCENT: z.coerce.number().int().min(0).max(100).default(10),
   REFERRAL_CREDIT_PAISE: z.coerce.number().int().default(10000),
+
+  // ---- Scheduled jobs ----
+  /**
+   * How long a COD order may sit in `PENDING_VERIFICATION` before the sweep
+   * auto-cancels it and releases the stock it is holding. 24h default: long
+   * enough for a buyer who missed the SMS to notice and retry via
+   * `resend-cod`, short enough that abandoned intent doesn't hold inventory
+   * indefinitely.
+   */
+  COD_VERIFICATION_TIMEOUT_HOURS: z.coerce.number().int().positive().default(24),
+
+  /**
+   * How long a buyer has to answer the "we could not deliver — do you still
+   * want it?" WhatsApp message before the order is cancelled.
+   *
+   * Measured from the failed attempt, not from the message send: 24 hours from
+   * the attempt gives everyone the same window, whereas "until midnight" would
+   * hand an 8pm failure four hours, most of them while the buyer is asleep.
+   */
+  DELIVERY_RESPONSE_WINDOW_HOURS: z.coerce.number().int().positive().default(24),
+
+  /**
+   * Total courier hand-over attempts allowed before the parcel returns to
+   * origin. Delhivery itself caps reattempts, so offering a buyer an unlimited
+   * "try again" would promise something the courier will not honour.
+   */
+  MAX_DELIVERY_ATTEMPTS: z.coerce.number().int().positive().default(3),
+
+  /**
+   * MSG91 WhatsApp template for the failed-delivery prompt. WhatsApp requires
+   * business-initiated messages to use a Meta-approved template, so this cannot
+   * be free text — the template must be registered before the flow works
+   * against a live account.
+   */
+  MSG91_DELIVERY_RETRY_TEMPLATE: z.string().min(1).default('adorini_delivery_retry'),
 });
 
 export type Env = z.infer<typeof envSchema>;

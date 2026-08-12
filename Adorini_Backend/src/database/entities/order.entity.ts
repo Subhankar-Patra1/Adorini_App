@@ -123,11 +123,43 @@ export class Order extends BaseEntity {
   @Column({ type: 'timestamptz', nullable: true })
   deliveredAt: Date | null;
 
+  /**
+   * How many times the courier has tried to hand this parcel over.
+   *
+   * Bounds the `SHIPPED ⇄ DELIVERY_FAILED` cycle: couriers themselves only
+   * reattempt a limited number of times before returning a parcel to origin, so
+   * offering a buyer an unlimited "try again" would promise something Delhivery
+   * will not honour.
+   */
+  @Column({ type: 'smallint', default: 0 })
+  deliveryAttempts: number;
+
+  /**
+   * When the most recent attempt failed. The response window is measured from
+   * here, not from the WhatsApp send — a message that goes out late must not
+   * shorten the buyer's window.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  lastDeliveryFailedAt: Date | null;
+
   @Column({ type: 'timestamptz', nullable: true })
   cancelledAt: Date | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   cancellationReason: string | null;
+
+  /**
+   * Set when a cancelled order's goods are back on the shelf.
+   *
+   * Restocking is deliberately decoupled from cancellation for parcels that
+   * were already dispatched: at the moment we cancel a failed delivery the
+   * goods are in a courier van heading back to the warehouse, days from being
+   * sellable. Restocking then would let us sell inventory that is not there
+   * (see ADR-034). Pre-dispatch cancellations restock immediately and stamp
+   * this at the same time.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  restockedAt: Date | null;
 
   @OneToMany('OrderItem', 'order')
   items: OrderItem[];

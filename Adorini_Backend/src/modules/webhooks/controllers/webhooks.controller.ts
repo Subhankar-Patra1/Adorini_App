@@ -17,8 +17,8 @@ import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import * as crypto from 'crypto';
 
-import { WebhooksService, type WebhookOutcome } from '../services/webhooks.service';
 import { Public } from '../../../common/decorators/public.decorator';
+import { WebhooksService, type WebhookOutcome } from '../services/webhooks.service';
 import type { Env } from '../../../config/env.validation';
 import { PaymentsService } from '../../../providers/payments/payments.service';
 import {
@@ -32,6 +32,14 @@ const TOKEN_HEADER = 'x-adorini-webhook-token';
 /**
  * Inbound provider callbacks.
  *
+ * `@Public()` is what lets providers reach these routes at all — authentication
+ * is global and fail-closed (ADR-013), and Cashfree, Delhivery and MSG91
+ * obviously cannot present an Adorini bearer token. These endpoints are
+ * emphatically *not* unauthenticated, though: each authenticates the caller
+ * itself, per provider, using the mechanism that provider actually supports —
+ * an HMAC signature over the raw body for Cashfree, a shared secret header for
+ * the two that do not sign their callbacks.
+ *
  * Excluded from Swagger deliberately: these are not part of the Flutter client's
  * contract, and publishing their shapes in a doc the app fetches would only
  * advertise the endpoints to everyone else.
@@ -44,20 +52,6 @@ const TOKEN_HEADER = 'x-adorini-webhook-token';
  * take no action on. A non-2xx tells the provider to redeliver, so returning an
  * error for "already handled" would guarantee an endless retry loop.
  */
-/**
- * `@Public()` is what lets providers reach these routes at all.
- *
- * Authentication is global and fail-closed (ADR-013), and Cashfree, Delhivery
- * and MSG91 obviously cannot present an Adorini bearer token — without this
- * every callback is rejected with 401 before the controller's own signature and
- * shared-secret checks ever run. The providers would retry, then give up:
- * payments never confirmed, shipments never tracked, referrals never paid.
- *
- * These endpoints are emphatically *not* unauthenticated. They authenticate the
- * caller themselves, per provider, using the mechanism that provider actually
- * supports — an HMAC signature over the raw body for Cashfree, a shared secret
- * header for the two that do not sign their callbacks.
- */
 @Public()
 @ApiExcludeController()
 @SkipThrottle()
@@ -69,7 +63,7 @@ export class WebhooksController {
     private readonly webhooks: WebhooksService,
     private readonly payments: PaymentsService,
     private readonly config: ConfigService<Env, true>,
-  ) {}
+  ) { }
 
   @Post('cashfree')
   @HttpCode(HttpStatus.OK)

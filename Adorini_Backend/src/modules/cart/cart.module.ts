@@ -7,9 +7,10 @@ import { PricingService } from './services/pricing.service';
 import { CartItem } from '../../database/entities/cart-item.entity';
 import { Order } from '../../database/entities/order.entity';
 import { ProductVariant } from '../../database/entities/product-variant.entity';
+import { CouponsModule } from '../coupons/coupons.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CartItem, ProductVariant, Order])],
+  imports: [TypeOrmModule.forFeature([CartItem, ProductVariant, Order]), CouponsModule],
   controllers: [CartController],
   providers: [CartService, PricingService],
   // Checkout reuses both: the same cart the buyer sees becomes the order, and

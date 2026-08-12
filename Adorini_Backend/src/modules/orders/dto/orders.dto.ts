@@ -92,6 +92,21 @@ export const orderDetailSchema = orderSummarySchema.extend({
   /** Drives whether the app shows an "edit address" button at all. */
   canEditAddress: z.boolean(),
   canCancel: z.boolean(),
+
+  // ---- failed-delivery retry offer (ADR-033) ----
+  /** How many hand-over attempts the courier has made. */
+  deliveryAttempts: z.number().int(),
+  /** When the most recent attempt failed; null if none has. */
+  lastDeliveryFailedAt: isoTimestamp.nullable(),
+  /**
+   * Whether the app should show "still want this? tap to reschedule". False
+   * once the window closes or the courier's reattempts are used up, so the app
+   * never offers a retry the courier will refuse.
+   */
+  canRequestReattempt: z.boolean(),
+  /** Deadline for answering the retry prompt — drives the countdown. Null when not applicable. */
+  respondByIso: isoTimestamp.nullable(),
+  attemptsRemaining: z.number().int(),
 });
 
 export class OrderSummaryDto extends createZodDto(orderSummarySchema) {}

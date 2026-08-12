@@ -26,7 +26,31 @@ const LEGAL_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   [OrderStatus.PENDING_VERIFICATION]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
   [OrderStatus.CONFIRMED]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
   // Cancellable after dispatch because an RTO comes back as a cancellation.
-  [OrderStatus.SHIPPED]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+  [OrderStatus.SHIPPED]: [
+    OrderStatus.DELIVERED,
+    // The courier tried and could not hand it over.
+    OrderStatus.DELIVERY_FAILED,
+    OrderStatus.CANCELLED,
+  ],
+  /**
+   * The only cycle in this lifecycle: `SHIPPED → DELIVERY_FAILED → SHIPPED`.
+   *
+   * A buyer who confirms they still want the parcel puts it back in transit for
+   * another courier attempt — the same physical parcel, the same waybill. The
+   * cycle is bounded by `Order.deliveryAttempts` against
+   * `MAX_DELIVERY_ATTEMPTS`, not by the state machine, because the limit is a
+   * courier/business rule rather than a structural one.
+   *
+   * `DELIVERED` is also reachable directly: a courier can hand over on a
+   * reattempt and scan it delivered before we ever process the reattempt
+   * transition, and refusing that scan would leave a genuinely delivered order
+   * stuck.
+   */
+  [OrderStatus.DELIVERY_FAILED]: [
+    OrderStatus.SHIPPED,
+    OrderStatus.DELIVERED,
+    OrderStatus.CANCELLED,
+  ],
   [OrderStatus.DELIVERED]: [],
   [OrderStatus.CANCELLED]: [],
 };

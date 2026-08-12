@@ -12,6 +12,7 @@ import { AllExceptionsFilter } from './all-exceptions.filter';
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
 import { RedisProviderError } from '../../providers/redis/redis.service';
 import { SmsProviderError } from '../../providers/sms/sms.service';
+import { StorageProviderError } from '../../providers/storage/storage.service';
 
 describe('AllExceptionsFilter', () => {
   let filter: AllExceptionsFilter;
@@ -70,6 +71,17 @@ describe('AllExceptionsFilter', () => {
 
       expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
       expect(body.code).toBe('CACHE_UNAVAILABLE');
+    });
+
+    it('maps an R2 upload failure to 503, not 500', () => {
+      // Found via manual verification: an unreachable R2 endpoint was
+      // surfacing as a generic 500 because this filter had no branch for it,
+      // unlike its SMS/OAuth/Redis siblings — indistinguishable from a real
+      // bug in the response a client sees.
+      const body = bodyFor(new StorageProviderError('Failed to upload file to R2: EPROTO'));
+
+      expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
+      expect(body.code).toBe('STORAGE_UNAVAILABLE');
     });
   });
 

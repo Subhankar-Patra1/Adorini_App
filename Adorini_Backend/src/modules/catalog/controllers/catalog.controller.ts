@@ -1,12 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../../../common/decorators/public.decorator';
 import { CatalogService } from '../services/catalog.service';
 import { BrandDto } from '../dto/brand.dto';
 import { CategoryDto } from '../dto/category.dto';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import { ProductListResponseDto } from '../dto/product-summary.dto';
-import { Public } from '../../../common/decorators/public.decorator';
 
 /**
  * Browsing the catalogue requires no account — a shopper must be able to see
@@ -20,7 +20,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 @ApiTags('catalog')
 @Controller('catalog')
 export class CatalogController {
-  constructor(private readonly catalog: CatalogService) {}
+  constructor(private readonly catalog: CatalogService) { }
 
   @Get('categories')
   @ApiOperation({ summary: 'Garment-type tabs shown on the catalog screen' })

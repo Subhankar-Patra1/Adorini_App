@@ -1,8 +1,9 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { TestingModule } from '@nestjs/testing';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 import { PdpService } from './pdp.service';
 import { SizeChartService } from './size-chart.service';
@@ -11,6 +12,7 @@ import {
   FitTag,
   MediaProvenance,
   MediaType,
+  OrderStatus,
   PrintTechnique,
   SizeEnquiryStatus,
 } from '../../../common/enums/domain.enums';
@@ -20,6 +22,8 @@ import { Product } from '../../../database/entities/product.entity';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
 import { Review } from '../../../database/entities/review.entity';
 import { SizeEnquiry } from '../../../database/entities/size-enquiry.entity';
+import { StorageService } from '../../../providers/storage/storage.service';
+import type { CreateReviewDto } from '../dto/review.dto';
 import type { CreateSizeEnquiryDto } from '../dto/create-size-enquiry.dto';
 import type { ListReviewsQueryDto } from '../dto/review.dto';
 
@@ -80,16 +84,28 @@ describe('PdpService', () => {
   let service: PdpService;
   let productQb: ReturnType<typeof buildQb>;
   let reviewQb: ReturnType<typeof buildQb>;
+  let orderItemQb: ReturnType<typeof buildQb>;
   let productRepo: { createQueryBuilder: jest.Mock; findOne: jest.Mock };
   let variantRepo: { find: jest.Mock };
   let mediaRepo: { find: jest.Mock };
   let reviewRepo: { createQueryBuilder: jest.Mock };
   let enquiryRepo: { create: jest.Mock; save: jest.Mock };
+  let storage: { uploadFile: jest.Mock };
+  /** Stands in for the transaction's `EntityManager` — `createReview` runs entirely against this. */
+  let manager: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
+  let dataSource: { transaction: jest.Mock };
 
   beforeEach(async () => {
     productQb = buildQb();
     reviewQb = buildQb();
     reviewQb.getRawOne.mockResolvedValue(EMPTY_AGGREGATE);
+    orderItemQb = buildQb();
+    orderItemQb.getCount = jest.fn().mockResolvedValue(0);
 
     productRepo = {
       createQueryBuilder: jest.fn().mockReturnValue(productQb),
@@ -102,6 +118,19 @@ describe('PdpService', () => {
       create: jest.fn((v: unknown) => v),
       save: jest.fn(),
     };
+    storage = { uploadFile: jest.fn().mockResolvedValue('https://cdn.example.com/uploaded.jpg') };
+
+    manager = {
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((_entity: unknown, v: unknown) => v),
+      save: jest.fn((_entity: unknown, v: unknown) => Promise.resolve(v)),
+      createQueryBuilder: jest.fn().mockReturnValue(orderItemQb),
+    };
+    // `createReview` and its photo upload run inside one transaction (a real
+    // bug in manual verification: a failed photo upload was leaving a
+    // permanent, photo-less review behind) — the mock just runs the callback
+    // against `manager` synchronously, which is enough to prove that wiring.
+    dataSource = { transaction: jest.fn((cb: (m: typeof manager) => unknown) => cb(manager)) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -116,6 +145,8 @@ describe('PdpService', () => {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('https://cdn.example.com') },
         },
+        { provide: StorageService, useValue: storage },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile();
 
@@ -456,6 +487,172 @@ describe('PdpService', () => {
       });
 
       expect(enquiryRepo.create).toHaveBeenCalledWith(expect.objectContaining({ message: null }));
+    });
+  });
+
+  describe('createReview', () => {
+    const dto: CreateReviewDto = {
+      rating: 5,
+      body: 'Lovely print',
+      fitTag: FitTag.TRUE_TO_SIZE,
+      purchasedNominalSize: 42,
+    };
+
+    const photo = (mimetype: string, buffer = Buffer.from('img')) =>
+      ({ mimetype, buffer }) as Express.Multer.File;
+
+    /** Makes `manager.save(Review, ...)` return a real-looking row; MediaAsset saves just echo their input. */
+    function mockSavedReview(overrides: Record<string, unknown> = {}) {
+      manager.save.mockImplementation((entity: unknown, value: Record<string, unknown>) =>
+        entity === Review
+          ? Promise.resolve({
+              ...value,
+              id: 'rev-1',
+              createdAt: new Date('2026-08-12T00:00:00.000Z'),
+              ...overrides,
+            })
+          : Promise.resolve(value),
+      );
+    }
+
+    it('throws NotFound for an unknown or inactive product', async () => {
+      productRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.createReview('nope', dto, 'user-1', [])).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(dataSource.transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a second review from the same user on the same product', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      manager.findOne.mockResolvedValue({ id: 'existing-review' });
+
+      await expect(service.createReview('slug', dto, 'user-1', [])).rejects.toThrow(
+        ConflictException,
+      );
+      expect(manager.save).not.toHaveBeenCalled();
+    });
+
+    it('checks for a prior review scoped to this product and user', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+
+      await service.createReview('slug', dto, 'user-1', []);
+
+      expect(manager.findOne).toHaveBeenCalledWith(Review, {
+        where: { productId: 'prod-1', userId: 'user-1' },
+        select: { id: true },
+      });
+    });
+
+    it('marks the review verified when the user has a delivered order for this product', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      orderItemQb.getCount.mockResolvedValue(1);
+      mockSavedReview();
+
+      const result = await service.createReview('slug', dto, 'user-1', []);
+
+      expect(orderItemQb.where).toHaveBeenCalledWith('order.userId = :userId', {
+        userId: 'user-1',
+      });
+      expect(orderItemQb.andWhere).toHaveBeenCalledWith('item.productId = :productId', {
+        productId: 'prod-1',
+      });
+      expect(orderItemQb.andWhere).toHaveBeenCalledWith('order.status = :status', {
+        status: OrderStatus.DELIVERED,
+      });
+      expect(result.isVerifiedPurchase).toBe(true);
+    });
+
+    it('leaves the review unverified when no delivered order exists', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      orderItemQb.getCount.mockResolvedValue(0);
+      mockSavedReview();
+
+      const result = await service.createReview('slug', dto, 'user-1', []);
+
+      expect(result.isVerifiedPurchase).toBe(false);
+    });
+
+    it('returns no reviewer name — the caller already knows who they are', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+
+      const result = await service.createReview('slug', dto, 'user-1', []);
+
+      expect(result.reviewerName).toBeNull();
+    });
+
+    it('uploads each photo to R2 and attaches it as BUYER media on the review', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+
+      const result = await service.createReview('slug', dto, 'user-1', [
+        photo('image/jpeg'),
+        photo('image/png'),
+      ]);
+
+      expect(storage.uploadFile).toHaveBeenCalledWith(
+        'reviews/rev-1/0.jpg',
+        expect.any(Buffer),
+        'image/jpeg',
+      );
+      expect(storage.uploadFile).toHaveBeenCalledWith(
+        'reviews/rev-1/1.png',
+        expect.any(Buffer),
+        'image/png',
+      );
+      expect(manager.save).toHaveBeenCalledWith(MediaAsset, [
+        expect.objectContaining({
+          productId: 'prod-1',
+          reviewId: 'rev-1',
+          provenance: MediaProvenance.BUYER,
+          uploadedByUserId: 'user-1',
+          type: MediaType.IMAGE,
+          displayOrder: 0,
+        }),
+        expect.objectContaining({ displayOrder: 1 }),
+      ]);
+      expect(result.media).toHaveLength(2);
+      expect(result.media[0].isOfficial).toBe(false);
+    });
+
+    it('never touches storage when no photos are submitted', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+
+      const result = await service.createReview('slug', dto, 'user-1', []);
+
+      expect(storage.uploadFile).not.toHaveBeenCalled();
+      // Only the Review save happens — no second call for a MediaAsset batch.
+      expect(manager.save).toHaveBeenCalledTimes(1);
+      expect(result.media).toEqual([]);
+    });
+
+    it('runs the whole review + photo upload as one transaction', async () => {
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+
+      await service.createReview('slug', dto, 'user-1', [photo('image/jpeg')]);
+
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('propagates a photo-upload failure instead of returning a fabricated success', async () => {
+      // Regression test: manual verification found a failed photo upload
+      // committing a real, permanent review with zero photos, because the
+      // review save and the R2 upload were not in the same transaction. This
+      // mock cannot exercise the real rollback (that was proven live against
+      // Postgres), but it does prove the error reaches the caller rather than
+      // being swallowed after the review row was already built.
+      productRepo.findOne.mockResolvedValue({ id: 'prod-1' });
+      mockSavedReview();
+      storage.uploadFile.mockRejectedValue(new Error('R2 unavailable'));
+
+      await expect(
+        service.createReview('slug', dto, 'user-1', [photo('image/jpeg')]),
+      ).rejects.toThrow('R2 unavailable');
     });
   });
 });

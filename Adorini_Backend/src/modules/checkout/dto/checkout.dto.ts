@@ -18,6 +18,13 @@ export const placeOrderSchema = z.object({
    * produce a negative total.
    */
   walletCreditPaise: z.number().int().nonnegative().optional().default(0),
+  /**
+   * If supplied, must still be valid at placement — a code that previewed
+   * fine on the quote but expired or hit its redemption limit in the
+   * meantime fails the whole checkout rather than silently placing the order
+   * without the discount the buyer saw (@GUARD Risk #3 extends to coupons).
+   */
+  couponCode: z.string().trim().min(1).max(32).optional(),
 });
 
 export const verifyCodSchema = z.object({

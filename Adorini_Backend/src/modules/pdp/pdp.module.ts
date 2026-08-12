@@ -9,9 +9,16 @@ import { Product } from '../../database/entities/product.entity';
 import { ProductVariant } from '../../database/entities/product-variant.entity';
 import { Review } from '../../database/entities/review.entity';
 import { SizeEnquiry } from '../../database/entities/size-enquiry.entity';
+import { StorageModule } from '../../providers/storage/storage.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, ProductVariant, MediaAsset, Review, SizeEnquiry])],
+  imports: [
+    // OrderItem is queried through the transaction EntityManager in
+    // PdpService, not injected as a Repository, so it needs no entry here —
+    // TypeORM's EntityManager reaches any entity registered on the DataSource.
+    TypeOrmModule.forFeature([Product, ProductVariant, MediaAsset, Review, SizeEnquiry]),
+    StorageModule,
+  ],
   controllers: [PdpController],
   providers: [PdpService, SizeChartService],
 })

@@ -44,7 +44,7 @@ export class CartController {
   })
   @ApiResponse({ status: 200, type: CartViewDto })
   getCart(@CurrentUser() user: AuthUser, @Query() query: CartQueryDto): Promise<CartView> {
-    return this.cart.getCart(user.id, query.walletCreditPaise);
+    return this.cart.getCart(user.id, query.walletCreditPaise, query.couponCode);
   }
 
   @Post('items')

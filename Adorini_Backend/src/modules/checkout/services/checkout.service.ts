@@ -29,6 +29,7 @@ import { PricingService } from '../../cart/services/pricing.service';
 import { OtpService } from '../../auth/services/otp.service';
 import { SmsService } from '../../../providers/sms/sms.service';
 import { PaymentsService } from '../../../providers/payments/payments.service';
+import { CouponsService } from '../../coupons/services/coupons.service';
 import type { Env } from '../../../config/env.validation';
 
 export interface PlaceOrderInput {
@@ -37,6 +38,8 @@ export interface PlaceOrderInput {
   paymentMethod: PaymentMethod;
   /** A request, not an instruction — clamped to the balance and to what is owed. */
   walletCreditPaise?: number;
+  /** Must still be valid at placement — see `placeOrder` for what happens when it is not. */
+  couponCode?: string;
 }
 
 export interface PlacedOrder {
@@ -63,6 +66,7 @@ export class CheckoutService {
     private readonly dataSource: DataSource,
     private readonly cart: CartService,
     private readonly pricing: PricingService,
+    private readonly coupons: CouponsService,
     private readonly otp: OtpService,
     private readonly sms: SmsService,
     private readonly payments: PaymentsService,
@@ -152,11 +156,45 @@ export class CheckoutService {
       const isFirstOrder = (await manager.countBy(Order, { userId })) === 0;
       const wallet = await this.lockWallet(manager, userId);
 
+      /**
+       * Re-validated here even though `cart.getCart`'s quote already checked
+       * this exact code — a code that previewed fine can legitimately fail by
+       * the time placement runs (someone else took the last redemption slot,
+       * the validity window closed). Silently placing the order without the
+       * discount the buyer saw on the quote would charge them more than they
+       * agreed to, which is the same failure Risk #3 exists to prevent for
+       * prices generally — a coupon is just another number in that total.
+       */
+      let couponResolution: Awaited<ReturnType<CouponsService['lockAndValidate']>> | null = null;
+      if (input.couponCode) {
+        const rawSubtotalPaise = lines.reduce((sum, line) => sum + line.lineTotalPaise, 0);
+        couponResolution = await this.coupons.lockAndValidate(
+          manager,
+          input.couponCode,
+          userId,
+          rawSubtotalPaise,
+        );
+
+        if (!couponResolution.applied) {
+          throw new BadRequestException({
+            code: `COUPON_${couponResolution.reason}`,
+            message: couponResolution.message,
+          });
+        }
+      }
+
       const totals = this.pricing.calculate({
         lines,
         isFirstOrder,
         requestedWalletCreditPaise: input.walletCreditPaise ?? 0,
         availableWalletCreditPaise: wallet?.balancePaise ?? 0,
+        couponDiscount: couponResolution?.applied
+          ? {
+              discountType: couponResolution.coupon.discountType,
+              discountValue: couponResolution.coupon.discountValue,
+              maxDiscountPaise: couponResolution.coupon.maxDiscountPaise,
+            }
+          : null,
       });
 
       await this.decrementStock(manager, lines);
@@ -198,6 +236,19 @@ export class CheckoutService {
 
       if (totals.walletCreditPaise > 0 && wallet) {
         await this.debitWallet(manager, wallet, totals.walletCreditPaise, saved.id);
+      }
+
+      // Only when the coupon actually produced the discount — if the
+      // first-order discount was larger, the coupon never took effect and
+      // must not be consumed for a benefit the buyer never received.
+      if (couponResolution?.applied && totals.discountSource === 'COUPON') {
+        await this.coupons.recordRedemption(
+          manager,
+          couponResolution.coupon.id,
+          userId,
+          saved.id,
+          totals.discountPaise,
+        );
       }
 
       await this.cart.clearWithin(manager, userId);

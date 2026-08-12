@@ -1,10 +1,13 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository, type EntityManager } from 'typeorm';
 
+import { describeRetryOffer } from './delivery-window';
 import { canTransition } from './order-state-machine';
 import { OrderTransitionService } from './order-transition.service';
 import { OrderStatus, PaymentStatus } from '../../../common/enums/domain.enums';
+import type { Env } from '../../../config/env.validation';
 import { Order, type ShippingAddressSnapshot } from '../../../database/entities/order.entity';
 import { OrderItem } from '../../../database/entities/order-item.entity';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
@@ -65,18 +68,32 @@ export interface OrderDetail extends OrderSummary {
   /** Whether the buyer can still change the delivery address. */
   canEditAddress: boolean;
   canCancel: boolean;
+  deliveryAttempts: number;
+  lastDeliveryFailedAt: string | null;
+  /** Whether the app should offer "still want this? reschedule it" — see ADR-033. */
+  canRequestReattempt: boolean;
+  respondByIso: string | null;
+  attemptsRemaining: number;
 }
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
+  private readonly maxDeliveryAttempts: number;
+  private readonly deliveryResponseWindowHours: number;
 
   constructor(
     @InjectRepository(Order) private readonly orders: Repository<Order>,
     @InjectRepository(OrderItem) private readonly orderItems: Repository<OrderItem>,
     private readonly transitions: OrderTransitionService,
     private readonly dataSource: DataSource,
-  ) {}
+    config: ConfigService<Env, true>,
+  ) {
+    this.maxDeliveryAttempts = config.get('MAX_DELIVERY_ATTEMPTS', { infer: true });
+    this.deliveryResponseWindowHours = config.get('DELIVERY_RESPONSE_WINDOW_HOURS', {
+      infer: true,
+    });
+  }
 
   async list(userId: string, limit = 20, offset = 0): Promise<OrderSummary[]> {
     const rows = await this.orders.find({
@@ -140,6 +157,17 @@ export class OrdersService {
       })),
       canEditAddress: ADDRESS_EDITABLE_STATUSES.includes(order.status),
       canCancel: canTransition(order.status, OrderStatus.CANCELLED),
+      deliveryAttempts: order.deliveryAttempts,
+      lastDeliveryFailedAt: order.lastDeliveryFailedAt?.toISOString() ?? null,
+      // Computed from the shared helper rather than locally, so what the app
+      // shows and what the reattempt endpoint will accept cannot disagree.
+      ...describeRetryOffer({
+        status: order.status,
+        deliveryAttempts: order.deliveryAttempts,
+        lastDeliveryFailedAt: order.lastDeliveryFailedAt,
+        maxAttempts: this.maxDeliveryAttempts,
+        responseWindowHours: this.deliveryResponseWindowHours,
+      }),
     };
   }
 
@@ -225,18 +253,122 @@ export class OrdersService {
         });
       }
 
-      await this.transitions.transition(manager, order.id, OrderStatus.CANCELLED, {
-        cancellationReason: reason ?? 'Cancelled by customer',
+      // Pre-dispatch by definition — the `SHIPPED` guard above rejects anything
+      // already in a courier's hands — so the goods are still on our shelf and
+      // can go straight back.
+      await this.performCancellation(manager, order, reason ?? 'Cancelled by customer', {
+        restockNow: true,
       });
-
-      await this.restock(manager, order.id);
-
-      if (order.walletCreditPaise > 0) {
-        await this.refundWalletCredit(manager, order);
-      }
     });
 
     return this.getDetail(userId, orderId);
+  }
+
+  /**
+   * System-initiated cancellation for a COD order whose intent-verification
+   * window expired — driven by the `jobs` sweep, not a buyer request.
+   *
+   * Deliberately not scoped by `userId`: there is no calling user, only a
+   * background job with an order id. Re-checks the status under the same lock
+   * `cancel()` uses, because the buyer may have verified or the order may have
+   * already been cancelled in the gap between the sweep's query and this call
+   * — the job runs on a timer, not inside a transaction with its selection.
+   *
+   * Returns `false` rather than throwing when there is nothing to do; an order
+   * that resolved itself moments before the sweep reached it is the sweep
+   * working as intended, not a fault.
+   */
+  async autoCancelUnverifiedCod(orderId: string): Promise<boolean> {
+    return this.dataSource.transaction(async (manager) => {
+      const order = await manager.findOne(Order, {
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      if (!order || order.status !== OrderStatus.PENDING_VERIFICATION) {
+        return false;
+      }
+
+      // Also pre-dispatch: an unverified COD order never shipped, so its stock
+      // is still ours to release.
+      await this.performCancellation(manager, order, 'COD verification window expired', {
+        restockNow: true,
+      });
+      return true;
+    });
+  }
+
+  /**
+   * Puts a returned parcel's units back on the shelf.
+   *
+   * Called when Delhivery confirms an `RT` return-to-origin — **not** when the
+   * order was cancelled. Between those two events the goods are physically in a
+   * courier van, and restocking on cancellation would let us sell inventory
+   * that is days from being sellable (ADR-034).
+   *
+   * Idempotent on `restockedAt`: couriers emit repeated scans, and putting the
+   * same units back twice would invent inventory out of nothing.
+   */
+  async restockReturnedParcel(manager: EntityManager, orderId: string): Promise<boolean> {
+    const order = await manager.findOne(Order, {
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
+
+    if (!order || order.restockedAt) {
+      return false;
+    }
+
+    await this.restock(manager, order.id);
+
+    // Targeted update for the same reason as in `performCancellation`: never
+    // write a whole entity back when another write may have touched the row.
+    await manager.update(Order, order.id, { restockedAt: new Date() });
+
+    this.logger.log(`Returned parcel for ${order.orderNumber} restocked`);
+    return true;
+  }
+
+  /**
+   * The transition, the wallet refund, and — only when the goods are actually
+   * ours to release — the stock restore. Shared by every cancellation path so
+   * the refund step cannot be forgotten by one of them.
+   *
+   * `restockNow` is the whole reason this takes options rather than always
+   * restocking: a pre-dispatch cancellation frees stock immediately, while a
+   * parcel already with a courier does not come back until its return-to-origin
+   * scan (ADR-034). A COD order can carry wallet credit either way, so the
+   * refund is unconditional.
+   */
+  async performCancellation(
+    manager: EntityManager,
+    order: Order,
+    reason: string,
+    options: { restockNow: boolean },
+  ): Promise<void> {
+    await this.transitions.transition(manager, order.id, OrderStatus.CANCELLED, {
+      cancellationReason: reason,
+    });
+
+    if (options.restockNow) {
+      await this.restock(manager, order.id);
+
+      /**
+       * A targeted column update, **not** `manager.save(Order, order)`.
+       *
+       * `transition` above loaded and saved its own copy of this row, so the
+       * `order` object handed to this method is now stale — saving it would
+       * write its pre-transition `status` back over the `CANCELLED` the
+       * transition just committed, silently un-cancelling the order. An
+       * integration test caught exactly that; the unit tests could not, because
+       * a mocked `save` does not model last-write-wins on a real row.
+       */
+      await manager.update(Order, order.id, { restockedAt: new Date() });
+    }
+
+    if (order.walletCreditPaise > 0) {
+      await this.refundWalletCredit(manager, order);
+    }
   }
 
   /** Returns reserved units to the shelf so a cancelled order stops holding stock. */

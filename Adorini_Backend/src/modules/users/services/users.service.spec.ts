@@ -6,6 +6,7 @@ import { QueryFailedError } from 'typeorm';
 import { UsersService } from './users.service';
 import { Referral, User } from '../../../database/entities';
 import { ReferralStatus } from '../../../common/enums/domain.enums';
+import { StorageService } from '../../../providers/storage/storage.service';
 
 function uniqueViolation(): QueryFailedError {
   const error = new QueryFailedError('UPDATE', [], new Error('duplicate key'));
@@ -37,12 +38,14 @@ describe('UsersService', () => {
   let usersSave: jest.Mock;
   let usersUpdate: jest.Mock;
   let referralsFind: jest.Mock;
+  let storage: { uploadFile: jest.Mock };
 
   beforeEach(async () => {
     usersFindOne = jest.fn().mockResolvedValue(makeUser());
     usersSave = jest.fn().mockImplementation((u: User) => Promise.resolve(u));
     usersUpdate = jest.fn().mockResolvedValue({ affected: 1 });
     referralsFind = jest.fn().mockResolvedValue([]);
+    storage = { uploadFile: jest.fn().mockResolvedValue('https://cdn.example.com/uploaded.jpg') };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -52,6 +55,7 @@ describe('UsersService', () => {
           useValue: { findOne: usersFindOne, save: usersSave, update: usersUpdate },
         },
         { provide: getRepositoryToken(Referral), useValue: { find: referralsFind } },
+        { provide: StorageService, useValue: storage },
       ],
     }).compile();
 
@@ -193,6 +197,50 @@ describe('UsersService', () => {
       expect(referralsFind).toHaveBeenCalledWith(
         expect.objectContaining({ where: { referrerId: 'user-1' } }),
       );
+    });
+  });
+
+  describe('updateAvatar', () => {
+    const file = (mimetype: string, buffer = Buffer.from('img')) =>
+      ({ mimetype, buffer }) as Express.Multer.File;
+
+    it('404s when the account is gone', async () => {
+      usersFindOne.mockResolvedValue(null);
+
+      await expect(service.updateAvatar('user-1', file('image/jpeg'))).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(storage.uploadFile).not.toHaveBeenCalled();
+    });
+
+    it('uploads to a deterministic per-user key derived from the mimetype', async () => {
+      await service.updateAvatar('user-1', file('image/png'));
+
+      expect(storage.uploadFile).toHaveBeenCalledWith(
+        'avatars/user-1.png',
+        expect.any(Buffer),
+        'image/png',
+      );
+    });
+
+    it('points the profile at the uploaded key', async () => {
+      const user = makeUser({ profilePhotoKey: null });
+      usersFindOne.mockResolvedValue(user);
+
+      await service.updateAvatar('user-1', file('image/jpeg'));
+
+      expect(user.profilePhotoKey).toBe('avatars/user-1.jpg');
+    });
+
+    it('uploads before touching the profile, so a failed upload changes nothing', async () => {
+      const user = makeUser();
+      usersFindOne.mockResolvedValue(user);
+      storage.uploadFile.mockRejectedValue(new Error('R2 unavailable'));
+
+      await expect(service.updateAvatar('user-1', file('image/jpeg'))).rejects.toThrow(
+        'R2 unavailable',
+      );
+      expect(usersSave).not.toHaveBeenCalled();
     });
   });
 });

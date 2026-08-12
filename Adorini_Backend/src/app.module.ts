@@ -14,12 +14,16 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CartModule } from './modules/cart/cart.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PdpModule } from './modules/pdp/pdp.module';
 import { ReturnsModule } from './modules/returns/returns.module';
 import { UsersModule } from './modules/users/users.module';
+import { VideosModule } from './modules/videos/videos.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { WhatsappBotModule } from './modules/whatsapp-bot/whatsapp-bot.module';
 
 import { RedisModule } from './providers/redis/redis.module';
 
@@ -50,6 +54,7 @@ import { RedisModule } from './providers/redis/redis.module';
     // Discovery: public browsing.
     CatalogModule,
     PdpModule,
+    VideosModule,
 
     // The purchase journey.
     CartModule,
@@ -60,7 +65,17 @@ import { RedisModule } from './providers/redis/redis.module';
 
     // Inbound provider callbacks, and staff tools.
     WebhooksModule,
+    // Inbound WhatsApp — currently one conversation only: answering the
+    // failed-delivery prompt without opening the app (ADR-035).
+    WhatsappBotModule,
     AdminModule,
+    // Explicit here too, even though CartModule/CheckoutModule already pull it
+    // in transitively — its AdminCouponsController deserves to be visible in
+    // this list, not just discoverable by tracing imports.
+    CouponsModule,
+
+    // Background sweeps — no routes of their own.
+    JobsModule,
   ],
 
   providers: [

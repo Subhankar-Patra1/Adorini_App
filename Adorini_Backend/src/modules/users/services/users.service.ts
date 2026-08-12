@@ -6,6 +6,13 @@ import { QueryFailedError, Repository } from 'typeorm';
 import { Referral, User } from '../../../database/entities';
 import { toPublicUser, type PublicUser } from '../../auth/services/auth.service';
 import type { ReferralStatus } from '../../../common/enums/domain.enums';
+import { StorageService } from '../../../providers/storage/storage.service';
+
+const AVATAR_MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
 
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -42,6 +49,7 @@ export class UsersService {
   constructor(
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Referral) private readonly referrals: Repository<Referral>,
+    private readonly storage: StorageService,
   ) {}
 
   async getProfile(userId: string): Promise<PublicUser> {
@@ -79,6 +87,25 @@ export class UsersService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Uploads a new profile photo and points the account at it.
+   *
+   * A deterministic key (`avatars/{userId}.{ext}`) rather than a random one —
+   * uploading again overwrites the same object, so there is no orphaned
+   * previous avatar to separately track and delete. Uploaded before the
+   * profile is touched, so a failed upload never leaves the account pointing
+   * at a key that does not exist.
+   */
+  async updateAvatar(userId: string, file: Express.Multer.File): Promise<PublicUser> {
+    await this.requireUser(userId);
+
+    const extension = AVATAR_MIME_EXTENSIONS[file.mimetype] ?? 'jpg';
+    const objectKey = `avatars/${userId}.${extension}`;
+    await this.storage.uploadFile(objectKey, file.buffer, file.mimetype);
+
+    return this.updateProfile(userId, { profilePhotoKey: objectKey });
   }
 
   /**

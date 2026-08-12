@@ -2,13 +2,17 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { OrdersController } from './controllers/orders.controller';
+import { DeliveryFailureService } from './services/delivery-failure.service';
 import { OrderTransitionService } from './services/order-transition.service';
 import { OrdersService } from './services/orders.service';
 import { Order } from '../../database/entities/order.entity';
 import { OrderItem } from '../../database/entities/order-item.entity';
 import { ProductVariant } from '../../database/entities/product-variant.entity';
+import { User } from '../../database/entities/user.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { WalletTransaction } from '../../database/entities/wallet-transaction.entity';
+import { LogisticsModule } from '../../providers/logistics/logistics.module';
+import { SmsModule } from '../../providers/sms/sms.module';
 
 /**
  * Orders: the domain core plus the buyer-facing routes.
@@ -24,10 +28,14 @@ import { WalletTransaction } from '../../database/entities/wallet-transaction.en
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Order, OrderItem, ProductVariant, Wallet, WalletTransaction]),
+    // `User` is registered for `DeliveryFailureService`, which resolves the
+    // buyer's phone to message them and to match an inbound WhatsApp reply.
+    TypeOrmModule.forFeature([Order, OrderItem, ProductVariant, User, Wallet, WalletTransaction]),
+    LogisticsModule,
+    SmsModule,
   ],
   controllers: [OrdersController],
-  providers: [OrderTransitionService, OrdersService],
-  exports: [OrderTransitionService, OrdersService],
+  providers: [OrderTransitionService, OrdersService, DeliveryFailureService],
+  exports: [OrderTransitionService, OrdersService, DeliveryFailureService],
 })
 export class OrdersModule {}

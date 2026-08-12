@@ -10,7 +10,9 @@ import {
   WebhookProvider,
 } from '../../../common/enums/domain.enums';
 import type { Order } from '../../../database/entities/order.entity';
+import { DeliveryFailureService } from '../../orders/services/delivery-failure.service';
 import { OrderTransitionService } from '../../orders/services/order-transition.service';
+import { OrdersService } from '../../orders/services/orders.service';
 import { WalletCreditService } from '../../wallet/services/wallet-credit.service';
 
 describe('WebhooksService', () => {
@@ -19,6 +21,8 @@ describe('WebhooksService', () => {
   let idempotency: { ingest: jest.Mock };
   let transitions: { transition: jest.Mock; setPaymentStatus: jest.Mock };
   let walletCredit: { creditReferralForDeliveredOrder: jest.Mock };
+  let deliveryFailures: { recordFailedAttempt: jest.Mock; promptBuyer: jest.Mock };
+  let orders: { restockReturnedParcel: jest.Mock };
 
   /** Runs the apply callback inline so the handler's real logic is exercised. */
   function passThroughIngest() {
@@ -49,6 +53,15 @@ describe('WebhooksService', () => {
     walletCredit = {
       creditReferralForDeliveredOrder: jest.fn().mockResolvedValue({ outcome: 'credited' }),
     };
+    deliveryFailures = {
+      recordFailedAttempt: jest
+        .fn()
+        .mockImplementation((_m: unknown, id: string) =>
+          Promise.resolve(order({ id, status: OrderStatus.DELIVERY_FAILED, deliveryAttempts: 1 })),
+        ),
+      promptBuyer: jest.fn().mockResolvedValue(undefined),
+    };
+    orders = { restockReturnedParcel: jest.fn().mockResolvedValue(true) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -56,6 +69,8 @@ describe('WebhooksService', () => {
         { provide: WebhookIdempotencyService, useValue: idempotency },
         { provide: OrderTransitionService, useValue: transitions },
         { provide: WalletCreditService, useValue: walletCredit },
+        { provide: DeliveryFailureService, useValue: deliveryFailures },
+        { provide: OrdersService, useValue: orders },
       ],
     }).compile();
 
@@ -243,6 +258,118 @@ describe('WebhooksService', () => {
 
       expect(outcome).toBe('unmatched');
       expect(walletCredit.creditReferralForDeliveredOrder).not.toHaveBeenCalled();
+    });
+
+    describe('failed hand-over attempts', () => {
+      /** `UD` covers both ordinary transit and a failed attempt; the prose distinguishes them. */
+      const attempt = (statusText: string, at = '2026-08-12T00:00:00Z') =>
+        ({
+          Shipment: {
+            AWB: 'AWB123',
+            Status: { StatusType: 'UD', Status: statusText, StatusDateTime: at },
+          },
+        }) as never;
+
+      it.each([
+        'Undelivered',
+        'UNDELIVERED',
+        'Consignee Not Available',
+        'Customer Refused',
+        'Refused by consignee',
+      ])('records %j as a failed attempt', async (statusText) => {
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
+
+        const outcome = await service.handleDelhivery(attempt(statusText));
+
+        expect(outcome).toBe('processed');
+        expect(deliveryFailures.recordFailedAttempt).toHaveBeenCalledWith(manager, 'order-1');
+        // Never routed through the ordinary status map, which would have made
+        // this a silent no-op on an already-SHIPPED order.
+        expect(transitions.transition).not.toHaveBeenCalled();
+      });
+
+      it.each(['In Transit', 'Dispatched', 'Pending', 'Out for delivery'])(
+        'treats %j as ordinary transit, not a failure',
+        async (statusText) => {
+          manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
+
+          await service.handleDelhivery(attempt(statusText));
+
+          expect(deliveryFailures.recordFailedAttempt).not.toHaveBeenCalled();
+          expect(transitions.transition).toHaveBeenCalledWith(
+            manager,
+            'order-1',
+            OrderStatus.SHIPPED,
+            expect.anything(),
+          );
+        },
+      );
+
+      it('prompts the buyer after the transaction, not inside it', async () => {
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
+
+        await service.handleDelhivery(attempt('Undelivered'));
+
+        // Messaging a buyer about a state change that then rolled back would be
+        // worse than not messaging at all.
+        expect(deliveryFailures.promptBuyer).toHaveBeenCalledWith(
+          expect.objectContaining({ status: OrderStatus.DELIVERY_FAILED }),
+        );
+      });
+
+      it('ignores a repeat scan of an attempt already recorded', async () => {
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.DELIVERY_FAILED }));
+
+        const outcome = await service.handleDelhivery(attempt('Undelivered', '2026-08-12T09:00Z'));
+
+        expect(outcome).toBe('ignored');
+        // Would otherwise inflate the attempt counter and re-prompt the buyer.
+        expect(deliveryFailures.recordFailedAttempt).not.toHaveBeenCalled();
+        expect(deliveryFailures.promptBuyer).not.toHaveBeenCalled();
+      });
+
+      it('does not prompt on a duplicate webhook', async () => {
+        idempotency.ingest.mockResolvedValue({ status: 'duplicate' });
+
+        await service.handleDelhivery(attempt('Undelivered'));
+
+        expect(deliveryFailures.promptBuyer).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('return to origin', () => {
+      it('restocks the parcel once it is physically back', async () => {
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
+
+        await service.handleDelhivery(payload('RT'));
+
+        expect(transitions.transition).toHaveBeenCalledWith(
+          manager,
+          'order-1',
+          OrderStatus.CANCELLED,
+          expect.anything(),
+        );
+        expect(orders.restockReturnedParcel).toHaveBeenCalledWith(manager, 'order-1');
+      });
+
+      it('still restocks when the sweep already cancelled the order days earlier', async () => {
+        // The transition is a no-op by then, but the goods still need putting
+        // back — restocking must not be gated on `changed`.
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.CANCELLED }));
+        transitions.transition.mockResolvedValue({ order: order(), changed: false });
+
+        await service.handleDelhivery(payload('RT'));
+
+        expect(orders.restockReturnedParcel).toHaveBeenCalledWith(manager, 'order-1');
+      });
+
+      it('does not restock on a delivery', async () => {
+        manager.findOne.mockResolvedValue(order({ status: OrderStatus.SHIPPED }));
+
+        await service.handleDelhivery(payload('DL'));
+
+        expect(orders.restockReturnedParcel).not.toHaveBeenCalled();
+      });
     });
   });
 

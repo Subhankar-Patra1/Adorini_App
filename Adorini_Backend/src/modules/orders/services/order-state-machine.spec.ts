@@ -19,6 +19,11 @@ describe('order state machine', () => {
       [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       [OrderStatus.SHIPPED, OrderStatus.DELIVERED],
       [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
+      // Failed hand-over, and the reattempt cycle back out of it.
+      [OrderStatus.SHIPPED, OrderStatus.DELIVERY_FAILED],
+      [OrderStatus.DELIVERY_FAILED, OrderStatus.SHIPPED],
+      [OrderStatus.DELIVERY_FAILED, OrderStatus.DELIVERED],
+      [OrderStatus.DELIVERY_FAILED, OrderStatus.CANCELLED],
     ])('allows %s -> %s', (from, to) => {
       expect(canTransition(from, to)).toBe(true);
       expect(() => assertTransition(from, to, 'order-1')).not.toThrow();
@@ -39,6 +44,14 @@ describe('order state machine', () => {
       [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
       [OrderStatus.CANCELLED, OrderStatus.CONFIRMED],
       [OrderStatus.CANCELLED, OrderStatus.DELIVERED],
+      // A parcel cannot fail delivery it was never out for.
+      [OrderStatus.ORDERED, OrderStatus.DELIVERY_FAILED],
+      [OrderStatus.CONFIRMED, OrderStatus.DELIVERY_FAILED],
+      // Terminal states stay terminal, including into the new status.
+      [OrderStatus.DELIVERED, OrderStatus.DELIVERY_FAILED],
+      [OrderStatus.CANCELLED, OrderStatus.DELIVERY_FAILED],
+      // No skipping back behind dispatch from a failed attempt.
+      [OrderStatus.DELIVERY_FAILED, OrderStatus.CONFIRMED],
     ])('rejects %s -> %s', (from, to) => {
       expect(canTransition(from, to)).toBe(false);
       expect(() => assertTransition(from, to, 'order-1')).toThrow(IllegalOrderTransitionError);
@@ -61,6 +74,8 @@ describe('order state machine', () => {
       OrderStatus.PENDING_VERIFICATION,
       OrderStatus.CONFIRMED,
       OrderStatus.SHIPPED,
+      // A failed attempt is explicitly recoverable — that is the whole point.
+      OrderStatus.DELIVERY_FAILED,
     ])('treats %s as non-terminal', (status) => {
       expect(isTerminalStatus(status)).toBe(false);
     });

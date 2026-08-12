@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import { DiscountType } from '../../../common/enums/domain.enums';
 import type { Env } from '../../../config/env.validation';
 
 export interface PriceableLine {
@@ -9,9 +10,25 @@ export interface PriceableLine {
   quantity: number;
 }
 
+/** Just enough of a `Coupon` row for the arithmetic — never the whole entity. */
+export interface CouponDiscountInput {
+  discountType: DiscountType;
+  discountValue: number;
+  maxDiscountPaise: number | null;
+}
+
+export type DiscountSource = 'FIRST_ORDER' | 'COUPON' | 'NONE';
+
 export interface OrderTotals {
   subtotalPaise: number;
   discountPaise: number;
+  /**
+   * Which promotion actually produced `discountPaise`. First-order and coupon
+   * discounts do not stack — see `calculate` — so at most one of them is ever
+   * the source, and the client needs to know which to label correctly ("first
+   * order" vs the coupon code) rather than being handed one opaque number.
+   */
+  discountSource: DiscountSource;
   deliveryFeePaise: number;
   walletCreditPaise: number;
   totalPaise: number;
@@ -28,6 +45,12 @@ export interface TotalsInput {
   requestedWalletCreditPaise?: number;
   /** The buyer's actual wallet balance — the hard ceiling on credit applied. */
   availableWalletCreditPaise?: number;
+  /**
+   * A coupon already validated by `CouponsService` — eligibility (active,
+   * date range, minimum order, redemption limits) is that service's job, not
+   * this one's. This function only ever turns a *valid* coupon into paise.
+   */
+  couponDiscount?: CouponDiscountInput | null;
 }
 
 /**
@@ -69,9 +92,25 @@ export class PricingService {
       0,
     );
 
-    const discountPaise = input.isFirstOrder
+    const firstOrderDiscountPaise = input.isFirstOrder
       ? Math.floor((subtotalPaise * this.firstOrderDiscountPercent) / 100)
       : 0;
+
+    const couponDiscountPaise = input.couponDiscount
+      ? this.computeCouponDiscount(subtotalPaise, input.couponDiscount)
+      : 0;
+
+    /**
+     * Mutually exclusive, not additive: the larger benefit wins. A buyer who
+     * qualifies for both a first-order discount and a coupon gets whichever
+     * saves them more, never both added together — stacking two independent
+     * promotions was never a decision anyone made on purpose, and undoing an
+     * accidental stack after coupons ship is a margin conversation nobody
+     * wants to have. See ADR-032.
+     */
+    const discountPaise = Math.max(firstOrderDiscountPaise, couponDiscountPaise);
+    const discountSource: DiscountSource =
+      discountPaise === 0 ? 'NONE' : couponDiscountPaise > firstOrderDiscountPaise ? 'COUPON' : 'FIRST_ORDER';
 
     // Threshold is measured on the subtotal, before discount. Measuring it
     // after would let a discount push a qualifying order back under the bar and
@@ -100,6 +139,7 @@ export class PricingService {
     return {
       subtotalPaise,
       discountPaise,
+      discountSource,
       deliveryFeePaise,
       walletCreditPaise,
       totalPaise: payableBeforeCredit - walletCreditPaise,
@@ -108,5 +148,17 @@ export class PricingService {
         ? 0
         : this.freeDeliveryThresholdPaise - subtotalPaise,
     };
+  }
+
+  private computeCouponDiscount(subtotalPaise: number, coupon: CouponDiscountInput): number {
+    const raw =
+      coupon.discountType === DiscountType.PERCENT
+        ? Math.floor((subtotalPaise * coupon.discountValue) / 100)
+        : coupon.discountValue;
+
+    const capped = coupon.maxDiscountPaise !== null ? Math.min(raw, coupon.maxDiscountPaise) : raw;
+
+    // Never discount more than the order is actually worth.
+    return Math.min(capped, subtotalPaise);
   }
 }

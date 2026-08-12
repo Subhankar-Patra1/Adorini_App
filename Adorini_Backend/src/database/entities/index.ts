@@ -2,6 +2,8 @@ import { Address } from './address.entity';
 import { Brand } from './brand.entity';
 import { CartItem } from './cart-item.entity';
 import { Category } from './category.entity';
+import { Coupon } from './coupon.entity';
+import { CouponRedemption } from './coupon-redemption.entity';
 import { MediaAsset } from './media-asset.entity';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
@@ -14,6 +16,8 @@ import { ReturnRequest } from './return-request.entity';
 import { Review } from './review.entity';
 import { SizeEnquiry } from './size-enquiry.entity';
 import { User } from './user.entity';
+import { Video } from './video.entity';
+import { VideoProductTag } from './video-product-tag.entity';
 import { Wallet } from './wallet.entity';
 import { WalletTransaction } from './wallet-transaction.entity';
 
@@ -22,6 +26,8 @@ export * from './address.entity';
 export * from './brand.entity';
 export * from './cart-item.entity';
 export * from './category.entity';
+export * from './coupon.entity';
+export * from './coupon-redemption.entity';
 export * from './media-asset.entity';
 export * from './order.entity';
 export * from './order-item.entity';
@@ -34,6 +40,8 @@ export * from './return-request.entity';
 export * from './review.entity';
 export * from './size-enquiry.entity';
 export * from './user.entity';
+export * from './video.entity';
+export * from './video-product-tag.entity';
 export * from './wallet.entity';
 export * from './wallet-transaction.entity';
 
@@ -51,6 +59,8 @@ export const ENTITIES = [
   Brand,
   CartItem,
   Category,
+  Coupon,
+  CouponRedemption,
   MediaAsset,
   Order,
   OrderItem,
@@ -63,6 +73,8 @@ export const ENTITIES = [
   Review,
   SizeEnquiry,
   User,
+  Video,
+  VideoProductTag,
   Wallet,
   WalletTransaction,
 ];

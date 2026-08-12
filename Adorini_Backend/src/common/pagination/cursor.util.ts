@@ -13,7 +13,7 @@ export interface SeekCursor {
  * Base64url of a small JSON pair rather than a raw offset: a row inserted or
  * removed between two page requests shifts every subsequent `LIMIT..OFFSET`
  * page, so an offset-paginated feed skips or repeats items mid-scroll —
- * precisely what infinite scroll is meant to hide (see ADR-010).
+ * precisely what infinite scroll is meant to hide (see ADR-028).
  */
 export function encodeCursor(cursor: SeekCursor): string {
   return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');

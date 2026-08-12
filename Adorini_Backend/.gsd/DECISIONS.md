@@ -283,7 +283,7 @@ Deviates from the MAS pipeline's parallel `@FE + @BE`. Accepted because NestJS a
 
 **Mitigation for the deferred-integration risk**: each module is verified against its own Swagger doc at completion — response shapes checked against the known screen requirements module-by-module, not deferred to one end-of-build integration pass.
 
-## ADR-010: Cursor-based pagination for the catalog, and full-text search via a dedicated migration
+## ADR-028: Cursor-based pagination for the catalog, and full-text search via a dedicated migration
 
 **Date**: 2026-08-12 · **Status**: Accepted
 
@@ -295,7 +295,7 @@ The PRD specifies "infinite scroll" for the catalog grid but never picks cursor 
 
 **Consequence (catalog)**: `search_vector` is intentionally absent from the `Product` entity — it is written by the trigger and read only via raw SQL in `CatalogService`, so there is nothing for TypeORM to hydrate and no risk of the ORM writing a stale value over it.
 
-## ADR-011: Shared-secret auth for Delhivery and MSG91 webhooks
+## ADR-029: Shared-secret auth for Delhivery and MSG91 webhooks
 
 **Date**: 2026-08-12 · **Status**: Accepted
 
@@ -307,7 +307,7 @@ Cashfree signs its callbacks (HMAC-SHA256 over `timestamp + rawBody`), and `Paym
 
 **Consequence**: `NestFactory.create` now sets `rawBody: true`, because Cashfree signs the exact bytes sent and verifying against a re-serialised body fails on any key-order difference.
 
-## ADR-012: Webhooks answer 2xx for duplicates, unmatched entities, and no-op events
+## ADR-030: Webhooks answer 2xx for duplicates, unmatched entities, and no-op events
 
 **Date**: 2026-08-12 · **Status**: Accepted
 
@@ -316,3 +316,80 @@ All three providers redeliver on any non-2xx. An error response for "already pro
 **Chosen**: authenticated requests return `200` with an `outcome` discriminator — `processed`, `duplicate`, `ignored` (recorded, no action for this event type), or `unmatched` (no local entity; payload retained for reconciliation). Only genuine faults are non-2xx: `401` for bad signature/token, `400` for an unparseable payload, and `409` for an **illegal state transition**, which SPEC requires be rejected rather than silently ignored — that one *should* retry after a human looks at it, and its marker row rolls back with the transaction so a corrected redelivery can still apply.
 
 **Consequence**: a repeat of the *current* status is a no-op rather than an error (`TransitionResult.changed === false`). Couriers emit several scans with the same status, and treating those as illegal would turn routine tracking noise into failed webhooks. The referral payout is gated on `changed`, so only the transition that actually delivered the order can pay out.
+
+## ADR-031: Videos MVP scope — feed and "shop this look" tags, no likes or comments
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+The PRD's reels feature lists a feed, a player, likes, comments, and "shop this look" product tags. Building all five was not warranted for an MVP whose core bet is discovery → trust → purchase, not social engagement.
+
+**Chosen**: ship the feed and product tagging only — the part with an actual conversion path, a shopper watches a clip and taps through to a product. Likes and comments are deferred: they carry real moderation cost (abuse, spam) and no revenue path, and building them without moderation would be a liability, not a feature.
+
+**Also chosen**: video uploads are MP4-only (`VIDEO_MIME_EXTENSIONS` has one entry), and the feed is strictly chronological — no `displayOrder` on `Video` (contrast `VideoProductTag.displayOrder`, which orders the small, admin-curated tag list under one video, where manual ordering is cheap to reason about and genuinely useful). A manual feed-curation override is easy to add later; nothing here forecloses it.
+
+**Rejected**: building a `displayOrder` on `Video` up front for hypothetical future curation — every video seeded so far would default to `0`, so it would not yet do anything a real requirement asked for.
+
+## ADR-032: Coupons do not stack with the first-order discount; no gift cards in scope
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Coupons are a new checkout input alongside the existing first-order discount (ADR-023 established `PricingService` as the single place both quote and placement compute money — a coupon is just another input to that same function, not a second code path).
+
+**Chosen — no stacking**: a buyer who qualifies for both a first-order discount and a coupon gets whichever is larger, never both added together. Nobody decided on purpose that these two promotions should compound, and unwinding an accidental stack after coupons ship is a margin conversation nobody wants to have. `PricingService.calculate` computes both and takes `Math.max`, reporting which one actually won via `discountSource` so the client labels it correctly.
+
+**Chosen — redemption is per-user-once, enforced twice**: `uq_coupon_redemption_coupon_user` fixes the per-user limit at exactly one (no configurable per-user cap — the only case MVP needs), and `CouponsService.lockAndValidate` takes a `pessimistic_write` lock on the `Coupon` row before checking the global `maxRedemptions` count, so two concurrent checkouts racing for the last redemption slot serialise rather than both succeeding. The lock makes the check trustworthy; the unique constraint is what actually guarantees it if the lock is ever bypassed — the same two-layer pattern Risk #1's webhook idempotency uses.
+
+**Chosen — redemption is recorded after pricing decides, not before**: the coupon is validated once under lock (`lockAndValidate`), *then* `PricingService` decides whether it or the first-order discount wins, and only if the coupon actually produced the discount does `CouponsService.recordRedemption` run — after the order row exists, in the same transaction. A coupon that lost to a larger first-order discount is not consumed for a benefit the buyer never received.
+
+**Rejected — gift cards**: mentioned in the original PRD alongside coupons but a materially different feature — a stored-value balance a buyer can spend across multiple orders, not a single-order discount code. Issuance, balance tracking, and fraud on a redeemable balance are their own risk surface and deserve a dedicated design pass, not a field bolted onto `Coupon`.
+
+**Consequence**: `discountType`/`discountValue` are immutable after a coupon is created (`CouponsService.updateCoupon` does not accept them) — changing what a shared, already-distributed code is worth would silently change a live promotion's meaning. A coupon that needs a different value is a new coupon.
+
+## ADR-033: A failed delivery is a distinct state, not a cancellation
+
+**Date**: 2026-08-12 · **Status**: Accepted
+
+Delhivery reports both "moving through the network" and "attempted and could not hand over" under the same `StatusType: UD`. Because the previous mapping keyed only on `StatusType` — `UD → SHIPPED` — a failed attempt on an already-`SHIPPED` order was a **silent no-op**: nobody was told, and the stock stayed reserved indefinitely for an order nobody would complete.
+
+**Chosen**: a new `DELIVERY_FAILED` order status, plus `SHIPPED ⇄ DELIVERY_FAILED` as the lifecycle's only legal cycle. On a failed attempt the order moves there, `deliveryAttempts` increments, and the buyer is asked over WhatsApp whether they still want it. A reply of "yes" puts the same parcel and waybill back in transit (Delhivery's NDR reattempt, not a new shipment); silence past `DELIVERY_RESPONSE_WINDOW_HOURS` cancels it.
+
+**Rejected — marking it `CANCELLED` immediately and un-cancelling on reply.** The common case is a buyer who simply was not home. Telling them their order is cancelled and then reversing it is a worse experience than the problem it solves, and it was the explicit thing this flow existed to avoid.
+
+**Rejected — tracking failed attempts in side columns while leaving the status `SHIPPED`.** "Awaiting the buyer's decision" is genuinely a different state from "in transit": the orders screen must render it differently, and SPEC requires the state machine to enforce legal transitions rather than have meaningful states smuggled past it.
+
+**Rejected — branching on *why* the attempt failed.** Delhivery distinguishes "consignee not available" from "customer refused", but both get the same prompt: someone who genuinely refused simply does not reply, and the sweep closes the order for them. One flow, no reason-code mapping to get wrong.
+
+**Consequences**:
+- The window is measured from the failed attempt, not from the WhatsApp send — a provider outage delaying the message must not eat the buyer's window.
+- `MAX_DELIVERY_ATTEMPTS` bounds the cycle, because couriers cap reattempts themselves; offering an unlimited "try again" would promise what Delhivery will not honour.
+- The failed-attempt marker prose (`FAILED_ATTEMPT_MARKERS`) is **unverified against a live Delhivery account**. An unrecognised `UD` falls through to the ordinary in-transit path — the safe direction to be wrong in.
+- Scoped to COD in practice: a prepaid order cancelled this way needs a real Cashfree refund, and no refund call exists in the codebase yet.
+
+## ADR-034: Dispatched parcels restock on return-to-origin, not on cancellation
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Forced by**: an overselling risk found while designing ADR-033
+
+Cancellation used to restock unconditionally. That is correct pre-dispatch, but wrong the moment a parcel is with a courier: between cancelling a failed delivery and the parcel physically arriving back at the warehouse there are days, and restocking at cancellation would let us sell units that are in a van.
+
+**Chosen**: `performCancellation` takes an explicit `{ restockNow }` decision. Pre-dispatch cancellations (buyer cancel, COD-verification sweep) restock immediately. Post-dispatch cancellations do not; the parcel's `RT` return-to-origin webhook calls `restockReturnedParcel`, which is idempotent on a new `orders.restocked_at` column because couriers emit repeated scans and putting the same units back twice would invent inventory.
+
+**Consequence**: restocking is no longer gated on the cancellation `changed` flag. A parcel can return days after the sweep already cancelled the order, by which point the transition is a no-op — but the goods still need putting back.
+
+**Migration note**: existing cancelled orders are backfilled with `restocked_at = cancelled_at`, since they *were* restocked under the old behaviour. Without that they would look like they were still owed a restock.
+
+## ADR-035: `whatsapp-bot` comes into scope for exactly one conversation
+
+**Date**: 2026-08-12 · **Status**: Accepted · **Supersedes**: the "not built in this milestone" decision of 2026-08-10
+
+`whatsapp-bot/` was retained as empty boilerplate by explicit decision, with a note not to add it to `final_project_context.md` without approval. Answering the ADR-033 prompt required an inbound channel, and in-WhatsApp replies were chosen over an app deep link — the buyer being reached has just had a delivery go wrong, and requiring them to open and authenticate an app is friction exactly where it costs most.
+
+**Chosen**: build the module, but scoped to this one conversation — an inbound MSG91 webhook that interprets a reply to the failed-delivery prompt and nothing else. Not a general-purpose bot.
+
+**Design notes**:
+- Reuses `WebhookIdempotencyService` (Risk #1's mechanism). MSG91 redelivers inbound messages on non-2xx, and a replayed "yes" must not book a second courier reattempt.
+- Affirmative matching is generous (`yes`, `1`, `ok`, `retry`, `haan`, …) and matched on the whole trimmed message. Anything unrecognised is logged and ignored rather than guessed at — acting on an ambiguous message could book a courier the buyer never asked for.
+- A "no" reply takes **no** action; the sweep closes the order at the deadline. One code path owns cancellation rather than two that could disagree.
+- An inbound reply carries no order reference, so it resolves by phone to the buyer's most recent `DELIVERY_FAILED` order.
+- The in-app `POST /orders/:id/request-redelivery` exists alongside it, so a buyer who opens the app instead is not stuck.
+
+**External dependency**: WhatsApp requires business-initiated messages to use a Meta-approved template, registered through MSG91 (`MSG91_DELIVERY_RETRY_TEMPLATE`). That approval has days-to-weeks lead time, like DLT registration, and MSG91 credentials are still pending — so this flow is built and tested but not yet exercisable against a live account.

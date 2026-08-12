@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 
 import { PricingService } from './pricing.service';
+import { DiscountType } from '../../../common/enums/domain.enums';
 
 describe('PricingService', () => {
   let service: PricingService;
@@ -159,6 +160,79 @@ describe('PricingService', () => {
           requestedWalletCreditPaise: 10_000,
         }).walletCreditPaise,
       ).toBe(0);
+    });
+  });
+
+  describe('coupon discount', () => {
+    it('applies a percent coupon', () => {
+      const totals = service.calculate({
+        lines: [line(100_000)],
+        isFirstOrder: false,
+        couponDiscount: { discountType: DiscountType.PERCENT, discountValue: 20, maxDiscountPaise: null },
+      });
+
+      expect(totals.discountPaise).toBe(20_000);
+      expect(totals.discountSource).toBe('COUPON');
+    });
+
+    it('applies a flat coupon regardless of order size', () => {
+      const totals = service.calculate({
+        lines: [line(1_000_000)],
+        isFirstOrder: false,
+        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 5_000, maxDiscountPaise: null },
+      });
+
+      expect(totals.discountPaise).toBe(5_000);
+    });
+
+    it('caps a percent coupon at maxDiscountPaise', () => {
+      const totals = service.calculate({
+        lines: [line(1_000_000)],
+        isFirstOrder: false,
+        couponDiscount: { discountType: DiscountType.PERCENT, discountValue: 50, maxDiscountPaise: 10_000 },
+      });
+
+      // 50% of 1,000,000 is 500,000 — the cap must win.
+      expect(totals.discountPaise).toBe(10_000);
+    });
+
+    it('never discounts more than the order is worth', () => {
+      const totals = service.calculate({
+        lines: [line(5_000)],
+        isFirstOrder: false,
+        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 50_000, maxDiscountPaise: null },
+      });
+
+      expect(totals.discountPaise).toBe(5_000);
+    });
+
+    it('does not stack with the first-order discount — the larger one wins', () => {
+      // 10% first-order discount on 100,000 is 10,000; a flat ₹150 coupon is 15,000.
+      const totals = service.calculate({
+        lines: [line(100_000)],
+        isFirstOrder: true,
+        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 15_000, maxDiscountPaise: null },
+      });
+
+      expect(totals.discountPaise).toBe(15_000);
+      expect(totals.discountSource).toBe('COUPON');
+    });
+
+    it('falls back to the first-order discount when it is the larger benefit', () => {
+      const totals = service.calculate({
+        lines: [line(100_000)],
+        isFirstOrder: true,
+        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 500, maxDiscountPaise: null },
+      });
+
+      expect(totals.discountPaise).toBe(10_000);
+      expect(totals.discountSource).toBe('FIRST_ORDER');
+    });
+
+    it('reports NONE when neither promotion applies', () => {
+      const totals = service.calculate({ lines: [line(100_000)], isFirstOrder: false });
+
+      expect(totals.discountSource).toBe('NONE');
     });
   });
 

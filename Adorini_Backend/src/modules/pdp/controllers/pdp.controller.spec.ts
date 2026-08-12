@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { PdpController } from './pdp.controller';
 import { PdpService } from '../services/pdp.service';
 import type { CreateSizeEnquiryDto } from '../dto/create-size-enquiry.dto';
+import type { CreateReviewDto } from '../dto/review.dto';
 import type { ListReviewsQueryDto } from '../dto/review.dto';
 
 describe('PdpController', () => {
@@ -12,6 +13,7 @@ describe('PdpController', () => {
     getProductDetail: jest.Mock;
     listReviews: jest.Mock;
     createSizeEnquiry: jest.Mock;
+    createReview: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -19,6 +21,7 @@ describe('PdpController', () => {
       getProductDetail: jest.fn(),
       listReviews: jest.fn(),
       createSizeEnquiry: jest.fn(),
+      createReview: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -63,5 +66,24 @@ describe('PdpController', () => {
     await controller.createSizeEnquiry('some-kurti', dto, { id: 'user-1' });
 
     expect(service.createSizeEnquiry).toHaveBeenCalledWith('some-kurti', dto, 'user-1');
+  });
+
+  it('passes the slug, body, caller id, and photos through to createReview', async () => {
+    const dto = { rating: 5 } as CreateReviewDto;
+    const photos = [{ mimetype: 'image/jpeg', buffer: Buffer.from('x') }] as Express.Multer.File[];
+    service.createReview.mockResolvedValue({});
+
+    await controller.createReview('some-kurti', dto, { id: 'user-1' }, photos);
+
+    expect(service.createReview).toHaveBeenCalledWith('some-kurti', dto, 'user-1', photos);
+  });
+
+  it('defaults to an empty photo array when none are uploaded', async () => {
+    const dto = { rating: 5 } as CreateReviewDto;
+    service.createReview.mockResolvedValue({});
+
+    await controller.createReview('some-kurti', dto, { id: 'user-1' }, undefined as never);
+
+    expect(service.createReview).toHaveBeenCalledWith('some-kurti', dto, 'user-1', []);
   });
 });
