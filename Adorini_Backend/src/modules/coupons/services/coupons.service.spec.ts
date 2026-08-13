@@ -5,6 +5,7 @@ import { QueryFailedError } from 'typeorm';
 
 import { CouponsService } from './coupons.service';
 import { DiscountType } from '../../../common/enums/domain.enums';
+import { anyString } from '../../../common/testing/matchers';
 import { Coupon } from '../../../database/entities/coupon.entity';
 import { CouponRedemption } from '../../../database/entities/coupon-redemption.entity';
 import type { CreateCouponDto, UpdateCouponDto } from '../dto/coupons.dto';
@@ -34,7 +35,13 @@ function coupon(overrides: Partial<Coupon> = {}): Coupon {
 
 describe('CouponsService', () => {
   let service: CouponsService;
-  let coupons: { findOne: jest.Mock; save: jest.Mock; create: jest.Mock; find: jest.Mock; createQueryBuilder: jest.Mock };
+  let coupons: {
+    findOne: jest.Mock;
+    save: jest.Mock;
+    create: jest.Mock;
+    find: jest.Mock;
+    createQueryBuilder: jest.Mock;
+  };
   let redemptions: { count: jest.Mock; createQueryBuilder: jest.Mock };
   let manager: { findOne: jest.Mock; count: jest.Mock; save: jest.Mock; create: jest.Mock };
 
@@ -76,7 +83,7 @@ describe('CouponsService', () => {
 
       const result = await service.preview('NOPE', 'user-1', 100_000);
 
-      expect(result).toEqual({ applied: false, reason: 'NOT_FOUND', message: expect.any(String) });
+      expect(result).toEqual({ applied: false, reason: 'NOT_FOUND', message: anyString() });
     });
 
     it('normalises the code to uppercase before lookup', async () => {
@@ -92,7 +99,7 @@ describe('CouponsService', () => {
 
       const result = await service.preview('WELCOME10', 'user-1', 100_000);
 
-      expect(result).toEqual({ applied: false, reason: 'INACTIVE', message: expect.any(String) });
+      expect(result).toEqual({ applied: false, reason: 'INACTIVE', message: anyString() });
     });
 
     it('rejects a coupon that has not started yet', async () => {
@@ -102,7 +109,11 @@ describe('CouponsService', () => {
 
       const result = await service.preview('WELCOME10', 'user-1', 100_000);
 
-      expect(result).toEqual({ applied: false, reason: 'NOT_STARTED', message: expect.any(String) });
+      expect(result).toEqual({
+        applied: false,
+        reason: 'NOT_STARTED',
+        message: anyString(),
+      });
     });
 
     it('rejects an expired coupon', async () => {
@@ -112,7 +123,7 @@ describe('CouponsService', () => {
 
       const result = await service.preview('WELCOME10', 'user-1', 100_000);
 
-      expect(result).toEqual({ applied: false, reason: 'EXPIRED', message: expect.any(String) });
+      expect(result).toEqual({ applied: false, reason: 'EXPIRED', message: anyString() });
     });
 
     it('rejects an order below the coupon minimum', async () => {
@@ -120,7 +131,11 @@ describe('CouponsService', () => {
 
       const result = await service.preview('WELCOME10', 'user-1', 100_000);
 
-      expect(result).toEqual({ applied: false, reason: 'BELOW_MINIMUM', message: expect.any(String) });
+      expect(result).toEqual({
+        applied: false,
+        reason: 'BELOW_MINIMUM',
+        message: anyString(),
+      });
     });
 
     it('rejects a user who already redeemed this coupon', async () => {
@@ -132,7 +147,7 @@ describe('CouponsService', () => {
       expect(result).toEqual({
         applied: false,
         reason: 'ALREADY_REDEEMED',
-        message: expect.any(String),
+        message: anyString(),
       });
     });
 
@@ -145,7 +160,7 @@ describe('CouponsService', () => {
       expect(result).toEqual({
         applied: false,
         reason: 'REDEMPTION_LIMIT_REACHED',
-        message: expect.any(String),
+        message: anyString(),
       });
     });
 
@@ -182,9 +197,14 @@ describe('CouponsService', () => {
     it('runs the same eligibility checks as preview', async () => {
       manager.findOne.mockResolvedValue(coupon({ isActive: false }));
 
-      const result = await service.lockAndValidate(manager as never, 'WELCOME10', 'user-1', 100_000);
+      const result = await service.lockAndValidate(
+        manager as never,
+        'WELCOME10',
+        'user-1',
+        100_000,
+      );
 
-      expect(result).toEqual({ applied: false, reason: 'INACTIVE', message: expect.any(String) });
+      expect(result).toEqual({ applied: false, reason: 'INACTIVE', message: anyString() });
     });
   });
 
@@ -210,7 +230,7 @@ describe('CouponsService', () => {
       discountType: DiscountType.PERCENT,
       discountValue: 10,
       isActive: true,
-    } as CreateCouponDto;
+    };
 
     it('creates a coupon with zero redemptions', async () => {
       const result = await service.createCoupon(dto);
@@ -230,16 +250,14 @@ describe('CouponsService', () => {
     it('404s for an unknown coupon', async () => {
       coupons.findOne.mockResolvedValue(null);
 
-      await expect(service.updateCoupon('nope', {} as UpdateCouponDto)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.updateCoupon('nope', {})).rejects.toThrow(NotFoundException);
     });
 
     it('updates only the guardrail fields provided', async () => {
       const existing = coupon({ isActive: true, maxRedemptions: null });
       coupons.findOne.mockResolvedValue(existing);
 
-      await service.updateCoupon('coupon-1', { isActive: false } as UpdateCouponDto);
+      await service.updateCoupon('coupon-1', { isActive: false });
 
       expect(existing.isActive).toBe(false);
       expect(existing.maxRedemptions).toBeNull();

@@ -82,7 +82,7 @@ describe('PdpController', () => {
     const dto = { rating: 5 } as CreateReviewDto;
     service.createReview.mockResolvedValue({});
 
-    await controller.createReview('some-kurti', dto, { id: 'user-1' }, undefined as never);
+    await controller.createReview('some-kurti', dto, { id: 'user-1' }, undefined);
 
     expect(service.createReview).toHaveBeenCalledWith('some-kurti', dto, 'user-1', []);
   });

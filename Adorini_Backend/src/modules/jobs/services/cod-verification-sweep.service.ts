@@ -50,7 +50,9 @@ export class CodVerificationSweepService {
       return;
     }
 
-    this.logger.log(`COD verification sweep: ${expired.length} order(s) past ${this.timeoutHours}h`);
+    this.logger.log(
+      `COD verification sweep: ${expired.length} order(s) past ${this.timeoutHours}h`,
+    );
 
     let cancelled = 0;
     for (const order of expired) {

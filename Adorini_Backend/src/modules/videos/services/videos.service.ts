@@ -164,8 +164,14 @@ export class VideosService {
 
     await this.videos.save(video);
 
-    const tagRows = await this.tags.find({ where: { videoId: id }, order: { displayOrder: 'ASC' } });
-    return this.toAdminVideo(video, tagRows.map((t) => t.productId));
+    const tagRows = await this.tags.find({
+      where: { videoId: id },
+      order: { displayOrder: 'ASC' },
+    });
+    return this.toAdminVideo(
+      video,
+      tagRows.map((t) => t.productId),
+    );
   }
 
   /** Full-replace semantics — simplest contract for a "curate the tag list" admin screen. */
@@ -205,7 +211,12 @@ export class VideosService {
    */
   private async getTaggedProducts(
     videoIds: string[],
-  ): Promise<Map<string, { id: string; slug: string; name: string; pricePaise: number; thumbnailUrl: string | null }[]>> {
+  ): Promise<
+    Map<
+      string,
+      { id: string; slug: string; name: string; pricePaise: number; thumbnailUrl: string | null }[]
+    >
+  > {
     const grouped = new Map<
       string,
       { id: string; slug: string; name: string; pricePaise: number; thumbnailUrl: string | null }[]

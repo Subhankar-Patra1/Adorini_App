@@ -9,7 +9,7 @@ import { encodeCursor } from '../../../common/pagination/cursor.util';
 import { Video } from '../../../database/entities/video.entity';
 import { VideoProductTag } from '../../../database/entities/video-product-tag.entity';
 import { StorageService } from '../../../providers/storage/storage.service';
-import type { CreateVideoDto, ReplaceVideoTagsDto, UpdateVideoDto } from '../dto/videos.dto';
+import type { CreateVideoDto } from '../dto/videos.dto';
 
 function buildQb(overrides: Record<string, unknown> = {}) {
   const qb: Record<string, jest.Mock> = {};
@@ -49,7 +49,12 @@ describe('VideosService', () => {
   let service: VideosService;
   let videoQb: ReturnType<typeof buildQb>;
   let tagQb: ReturnType<typeof buildQb>;
-  let videosRepo: { createQueryBuilder: jest.Mock; find: jest.Mock; findOne: jest.Mock; save: jest.Mock };
+  let videosRepo: {
+    createQueryBuilder: jest.Mock;
+    find: jest.Mock;
+    findOne: jest.Mock;
+    save: jest.Mock;
+  };
   let tagsRepo: { createQueryBuilder: jest.Mock; find: jest.Mock; delete: jest.Mock };
   let storage: { uploadFile: jest.Mock };
   let manager: { save: jest.Mock; create: jest.Mock; delete: jest.Mock };
@@ -105,7 +110,7 @@ describe('VideosService', () => {
     it('only shows active videos', async () => {
       videoQb.getMany.mockResolvedValue([]);
 
-      await service.listFeed({ limit: 10 } as never);
+      await service.listFeed({ limit: 10 });
 
       expect(videoQb.where).toHaveBeenCalledWith('video.isActive = true');
     });
@@ -113,7 +118,7 @@ describe('VideosService', () => {
     it('maps a video and resolves its media URLs', async () => {
       videoQb.getMany.mockResolvedValue([video({ thumbnailKey: 'videos/thumbnails/a.jpg' })]);
 
-      const result = await service.listFeed({ limit: 10 } as never);
+      const result = await service.listFeed({ limit: 10 });
 
       expect(result.items[0]).toMatchObject({
         id: 'video-1',
@@ -129,7 +134,7 @@ describe('VideosService', () => {
         video({ id: 'v3', createdAt: new Date('2026-08-01T00:00:00.000Z') }),
       ]);
 
-      const result = await service.listFeed({ limit: 2 } as never);
+      const result = await service.listFeed({ limit: 2 });
 
       expect(result.items.map((i) => i.id)).toEqual(['v1', 'v2']);
       expect(result.nextCursor).toBe(
@@ -150,7 +155,7 @@ describe('VideosService', () => {
         },
       ]);
 
-      const result = await service.listFeed({ limit: 10 } as never);
+      const result = await service.listFeed({ limit: 10 });
 
       expect(result.items[0].taggedProducts).toEqual([
         {
@@ -166,7 +171,7 @@ describe('VideosService', () => {
     it('skips the tag query entirely for an empty page', async () => {
       videoQb.getMany.mockResolvedValue([]);
 
-      await service.listFeed({ limit: 10 } as never);
+      await service.listFeed({ limit: 10 });
 
       expect(tagsRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
@@ -223,16 +228,14 @@ describe('VideosService', () => {
     it('404s for an unknown video', async () => {
       videosRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.update('nope', {} as UpdateVideoDto)).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.update('nope', {})).rejects.toThrow(NotFoundException);
     });
 
     it('updates only the fields provided', async () => {
       const existing = video({ caption: 'Old', isActive: true });
       videosRepo.findOne.mockResolvedValue(existing);
 
-      await service.update('video-1', { isActive: false } as UpdateVideoDto);
+      await service.update('video-1', { isActive: false });
 
       expect(existing.caption).toBe('Old');
       expect(existing.isActive).toBe(false);
@@ -243,9 +246,9 @@ describe('VideosService', () => {
     it('404s for an unknown video', async () => {
       videosRepo.findOne.mockResolvedValue(null);
 
-      await expect(
-        service.replaceTags('nope', { productIds: [] } as ReplaceVideoTagsDto),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.replaceTags('nope', { productIds: [] })).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
     it('deletes the existing tag set before inserting the new one', async () => {
@@ -271,7 +274,10 @@ describe('VideosService', () => {
 
   describe('listAdmin', () => {
     it('groups tag rows by video and includes inactive videos', async () => {
-      videosRepo.find.mockResolvedValue([video({ id: 'v1' }), video({ id: 'v2', isActive: false })]);
+      videosRepo.find.mockResolvedValue([
+        video({ id: 'v1' }),
+        video({ id: 'v2', isActive: false }),
+      ]);
       tagsRepo.find.mockResolvedValue([
         { videoId: 'v1', productId: 'p1', displayOrder: 0 },
         { videoId: 'v1', productId: 'p2', displayOrder: 1 },

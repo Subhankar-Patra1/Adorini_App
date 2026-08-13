@@ -63,7 +63,7 @@ export class WebhooksController {
     private readonly webhooks: WebhooksService,
     private readonly payments: PaymentsService,
     private readonly config: ConfigService<Env, true>,
-  ) { }
+  ) {}
 
   @Post('cashfree')
   @HttpCode(HttpStatus.OK)

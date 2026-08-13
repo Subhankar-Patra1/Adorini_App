@@ -4,7 +4,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { AdminVideosController, VideosController } from './videos.controller';
 import { VideosService } from '../services/videos.service';
 import { AdminGuard } from '../../../common/guards/admin.guard';
-import type { CreateVideoDto, ReplaceVideoTagsDto, UpdateVideoDto } from '../dto/videos.dto';
+import type { CreateVideoDto, UpdateVideoDto } from '../dto/videos.dto';
 
 describe('VideosController', () => {
   let controller: VideosController;
@@ -108,7 +108,7 @@ describe('AdminVideosController', () => {
   });
 
   it('delegates tag replacement to the service', async () => {
-    const dto = { productIds: ['prod-1'] } as ReplaceVideoTagsDto;
+    const dto = { productIds: ['prod-1'] };
     videos.replaceTags.mockResolvedValue({});
 
     await controller.replaceTags('video-1', dto);

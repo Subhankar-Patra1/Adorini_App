@@ -24,7 +24,10 @@ export const whatsappInboundSchema = z
     /** The reply body, under one of several shapes depending on message type. */
     text: z.union([z.string(), z.object({ body: z.string() }).loose()]).optional(),
     body: z.string().optional(),
-    button: z.object({ text: z.string().optional(), payload: z.string().optional() }).loose().optional(),
+    button: z
+      .object({ text: z.string().optional(), payload: z.string().optional() })
+      .loose()
+      .optional(),
   })
   .loose();
 

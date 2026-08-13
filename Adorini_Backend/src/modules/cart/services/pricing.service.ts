@@ -110,7 +110,11 @@ export class PricingService {
      */
     const discountPaise = Math.max(firstOrderDiscountPaise, couponDiscountPaise);
     const discountSource: DiscountSource =
-      discountPaise === 0 ? 'NONE' : couponDiscountPaise > firstOrderDiscountPaise ? 'COUPON' : 'FIRST_ORDER';
+      discountPaise === 0
+        ? 'NONE'
+        : couponDiscountPaise > firstOrderDiscountPaise
+          ? 'COUPON'
+          : 'FIRST_ORDER';
 
     // Threshold is measured on the subtotal, before discount. Measuring it
     // after would let a discount push a qualifying order back under the bar and

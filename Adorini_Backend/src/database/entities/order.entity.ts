@@ -32,6 +32,11 @@ export interface ShippingAddressSnapshot {
  */
 @Index('idx_orders_user_created', ['userId', 'createdAt'])
 @Index('idx_orders_status', ['status'])
+// Drives the unanswered-delivery sweep's `status = DELIVERY_FAILED AND
+// last_delivery_failed_at < cutoff` scan. Declared here, not only in the
+// migration: an index the entities do not know about is one a generated
+// migration will cheerfully DROP.
+@Index('idx_orders_delivery_failed_at', ['status', 'lastDeliveryFailedAt'])
 @Check(
   'chk_order_totals_consistent',
   '"total_paise" = "subtotal_paise" - "discount_paise" + "delivery_fee_paise" - "wallet_credit_paise"',

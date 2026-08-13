@@ -129,7 +129,10 @@ export class CouponsService {
         message: 'You have already used this coupon.',
       };
     }
-    if (coupon.maxRedemptions !== null && (await countTotalRedemptions()) >= coupon.maxRedemptions) {
+    if (
+      coupon.maxRedemptions !== null &&
+      (await countTotalRedemptions()) >= coupon.maxRedemptions
+    ) {
       return {
         applied: false,
         reason: 'REDEMPTION_LIMIT_REACHED',

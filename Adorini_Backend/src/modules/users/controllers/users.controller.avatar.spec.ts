@@ -34,9 +34,7 @@ describe('UsersController — uploadAvatar', () => {
   });
 
   it('rejects when multer supplies no file', () => {
-    expect(() => controller.uploadAvatar({ id: 'user-1' }, undefined)).toThrow(
-      BadRequestException,
-    );
+    expect(() => controller.uploadAvatar({ id: 'user-1' }, undefined)).toThrow(BadRequestException);
     expect(users.updateAvatar).not.toHaveBeenCalled();
   });
 });

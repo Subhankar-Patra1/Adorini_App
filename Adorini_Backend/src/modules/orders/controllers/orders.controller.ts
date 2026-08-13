@@ -120,7 +120,10 @@ export class OrdersController {
     ].join('\n'),
   })
   @ApiResponse({ status: 201, type: OrderDetailDto })
-  @ApiResponse({ status: 409, description: 'Window expired, attempts exhausted, or not awaiting a decision' })
+  @ApiResponse({
+    status: 409,
+    description: 'Window expired, attempts exhausted, or not awaiting a decision',
+  })
   async requestRedelivery(
     @CurrentUser() user: AuthUser,
     @Param('id', ParseUUIDPipe) id: string,

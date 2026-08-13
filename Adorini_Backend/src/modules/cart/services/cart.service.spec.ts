@@ -58,12 +58,13 @@ describe('CartService — coupon preview', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string) =>
-              ({
-                FREE_DELIVERY_THRESHOLD_PAISE: 300_000,
-                DELIVERY_FEE_PAISE: 4_900,
-                FIRST_ORDER_DISCOUNT_PERCENT: 10,
-              })[key],
+            get: jest.fn(
+              (key: string) =>
+                ({
+                  FREE_DELIVERY_THRESHOLD_PAISE: 300_000,
+                  DELIVERY_FEE_PAISE: 4_900,
+                  FIRST_ORDER_DISCOUNT_PERCENT: 10,
+                })[key],
             ),
           },
         },

@@ -14,6 +14,7 @@ import {
 } from '../../../common/enums/domain.enums';
 import { Order } from '../../../database/entities/order.entity';
 import { OrderItem } from '../../../database/entities/order-item.entity';
+import { anyDate } from '../../../common/testing/matchers';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
 import { Wallet } from '../../../database/entities/wallet.entity';
 import { WalletTransaction } from '../../../database/entities/wallet-transaction.entity';
@@ -195,7 +196,7 @@ describe('OrdersService — cancellation', () => {
       expect(manager.update).toHaveBeenCalledWith(
         Order,
         'order-1',
-        expect.objectContaining({ restockedAt: expect.any(Date) }),
+        expect.objectContaining({ restockedAt: anyDate() }),
       );
       expect(manager.save).not.toHaveBeenCalledWith(Order, expect.anything());
     });

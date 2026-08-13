@@ -91,7 +91,10 @@ export class WhatsappBotService {
   }
 
   private async interpret(message: InboundMessage): Promise<InboundReplyOutcome> {
-    const normalised = message.text.trim().toLowerCase().replace(/[.!]+$/, '');
+    const normalised = message.text
+      .trim()
+      .toLowerCase()
+      .replace(/[.!]+$/, '');
 
     if (NEGATIVE_REPLIES.has(normalised)) {
       /**

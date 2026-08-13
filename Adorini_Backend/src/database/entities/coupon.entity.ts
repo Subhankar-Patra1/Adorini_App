@@ -13,10 +13,7 @@ import { DiscountType } from '../../common/enums/domain.enums';
  * and are out of scope here — see ADR-032.
  */
 @Check('chk_coupon_discount_value_positive', '"discount_value" > 0')
-@Check(
-  'chk_coupon_percent_range',
-  `"discount_type" <> 'PERCENT' OR "discount_value" <= 100`,
-)
+@Check('chk_coupon_percent_range', `"discount_type" <> 'PERCENT' OR "discount_value" <= 100`)
 @Entity('coupons')
 export class Coupon extends BaseEntity {
   /** Stored uppercase; compared case-insensitively is how buyers actually type it. */

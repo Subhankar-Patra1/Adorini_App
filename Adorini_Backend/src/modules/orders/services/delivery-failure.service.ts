@@ -81,9 +81,7 @@ export class DeliveryFailureService {
     order.lastDeliveryFailedAt = new Date();
     await manager.save(Order, order);
 
-    this.logger.log(
-      `Delivery attempt ${order.deliveryAttempts} failed for ${order.orderNumber}`,
-    );
+    this.logger.log(`Delivery attempt ${order.deliveryAttempts} failed for ${order.orderNumber}`);
 
     return order;
   }
@@ -100,9 +98,7 @@ export class DeliveryFailureService {
     if (order.deliveryAttempts >= this.maxAttempts) {
       // Nothing to offer — the courier will not try again, so asking would
       // promise something we cannot deliver.
-      this.logger.log(
-        `No reattempt left for ${order.orderNumber}; skipping the retry prompt`,
-      );
+      this.logger.log(`No reattempt left for ${order.orderNumber}; skipping the retry prompt`);
       return;
     }
 
@@ -118,10 +114,7 @@ export class DeliveryFailureService {
         `Delivery-retry prompt sent for ${order.orderNumber} to ${maskPhone(user.phone)}`,
       );
     } catch (error) {
-      this.logger.error(
-        `Could not send the delivery-retry prompt for ${order.orderNumber}`,
-        error,
-      );
+      this.logger.error(`Could not send the delivery-retry prompt for ${order.orderNumber}`, error);
     }
   }
 
@@ -288,5 +281,4 @@ export class DeliveryFailureService {
 
     return cancelled;
   }
-
 }

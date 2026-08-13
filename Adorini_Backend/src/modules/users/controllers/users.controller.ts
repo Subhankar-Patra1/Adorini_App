@@ -60,7 +60,10 @@ export class UsersController {
       limits: { fileSize: MAX_AVATAR_BYTES },
       fileFilter: (_req, file, callback) => {
         if (!AVATAR_MIME_TYPES.has(file.mimetype)) {
-          callback(new UnsupportedMediaTypeException(`Unsupported image type: ${file.mimetype}`), false);
+          callback(
+            new UnsupportedMediaTypeException(`Unsupported image type: ${file.mimetype}`),
+            false,
+          );
           return;
         }
         callback(null, true);

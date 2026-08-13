@@ -20,7 +20,7 @@ import { ProductListResponseDto } from '../dto/product-summary.dto';
 @ApiTags('catalog')
 @Controller('catalog')
 export class CatalogController {
-  constructor(private readonly catalog: CatalogService) { }
+  constructor(private readonly catalog: CatalogService) {}
 
   @Get('categories')
   @ApiOperation({ summary: 'Garment-type tabs shown on the catalog screen' })

@@ -42,7 +42,7 @@ const REVIEW_PHOTO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'
 @ApiTags('pdp')
 @Controller('pdp')
 export class PdpController {
-  constructor(private readonly pdp: PdpService) { }
+  constructor(private readonly pdp: PdpService) {}
 
   /**
    * Product pages are browsable without an account — a shopper has to see a
@@ -90,7 +90,10 @@ export class PdpController {
       limits: { fileSize: MAX_REVIEW_PHOTO_BYTES },
       fileFilter: (_req, file, callback) => {
         if (!REVIEW_PHOTO_MIME_TYPES.has(file.mimetype)) {
-          callback(new UnsupportedMediaTypeException(`Unsupported photo type: ${file.mimetype}`), false);
+          callback(
+            new UnsupportedMediaTypeException(`Unsupported photo type: ${file.mimetype}`),
+            false,
+          );
           return;
         }
         callback(null, true);

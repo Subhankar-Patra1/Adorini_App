@@ -19,7 +19,7 @@ export const createSizeEnquirySchema = z.object({
   message: z.string().trim().max(1000).optional(),
 });
 
-export class CreateSizeEnquiryDto extends createZodDto(createSizeEnquirySchema) { }
+export class CreateSizeEnquiryDto extends createZodDto(createSizeEnquirySchema) {}
 
 export const sizeEnquiryResponseSchema = z.object({
   id: z.uuid(),
@@ -28,4 +28,4 @@ export const sizeEnquiryResponseSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 
-export class SizeEnquiryResponseDto extends createZodDto(sizeEnquiryResponseSchema) { }
+export class SizeEnquiryResponseDto extends createZodDto(sizeEnquiryResponseSchema) {}

@@ -88,7 +88,10 @@ export class AdminVideosController {
         fileFilter: (_req, file, callback) => {
           const allowed = file.fieldname === 'video' ? VIDEO_MIME_TYPES : THUMBNAIL_MIME_TYPES;
           if (!allowed.has(file.mimetype)) {
-            callback(new UnsupportedMediaTypeException(`Unsupported type: ${file.mimetype}`), false);
+            callback(
+              new UnsupportedMediaTypeException(`Unsupported type: ${file.mimetype}`),
+              false,
+            );
             return;
           }
           callback(null, true);

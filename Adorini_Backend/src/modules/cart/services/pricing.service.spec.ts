@@ -168,7 +168,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(100_000)],
         isFirstOrder: false,
-        couponDiscount: { discountType: DiscountType.PERCENT, discountValue: 20, maxDiscountPaise: null },
+        couponDiscount: {
+          discountType: DiscountType.PERCENT,
+          discountValue: 20,
+          maxDiscountPaise: null,
+        },
       });
 
       expect(totals.discountPaise).toBe(20_000);
@@ -179,7 +183,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(1_000_000)],
         isFirstOrder: false,
-        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 5_000, maxDiscountPaise: null },
+        couponDiscount: {
+          discountType: DiscountType.FLAT,
+          discountValue: 5_000,
+          maxDiscountPaise: null,
+        },
       });
 
       expect(totals.discountPaise).toBe(5_000);
@@ -189,7 +197,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(1_000_000)],
         isFirstOrder: false,
-        couponDiscount: { discountType: DiscountType.PERCENT, discountValue: 50, maxDiscountPaise: 10_000 },
+        couponDiscount: {
+          discountType: DiscountType.PERCENT,
+          discountValue: 50,
+          maxDiscountPaise: 10_000,
+        },
       });
 
       // 50% of 1,000,000 is 500,000 — the cap must win.
@@ -200,7 +212,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(5_000)],
         isFirstOrder: false,
-        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 50_000, maxDiscountPaise: null },
+        couponDiscount: {
+          discountType: DiscountType.FLAT,
+          discountValue: 50_000,
+          maxDiscountPaise: null,
+        },
       });
 
       expect(totals.discountPaise).toBe(5_000);
@@ -211,7 +227,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(100_000)],
         isFirstOrder: true,
-        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 15_000, maxDiscountPaise: null },
+        couponDiscount: {
+          discountType: DiscountType.FLAT,
+          discountValue: 15_000,
+          maxDiscountPaise: null,
+        },
       });
 
       expect(totals.discountPaise).toBe(15_000);
@@ -222,7 +242,11 @@ describe('PricingService', () => {
       const totals = service.calculate({
         lines: [line(100_000)],
         isFirstOrder: true,
-        couponDiscount: { discountType: DiscountType.FLAT, discountValue: 500, maxDiscountPaise: null },
+        couponDiscount: {
+          discountType: DiscountType.FLAT,
+          discountValue: 500,
+          maxDiscountPaise: null,
+        },
       });
 
       expect(totals.discountPaise).toBe(10_000);
