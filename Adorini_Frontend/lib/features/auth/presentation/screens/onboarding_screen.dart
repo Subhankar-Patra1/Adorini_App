@@ -154,6 +154,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 textAlign: TextAlign.center,
                 style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
               ),
+
+              const SizedBox(height: AppSpacing.lg),
+              const Divider(),
+              const SizedBox(height: AppSpacing.sm),
+              FilledButton.tonalIcon(
+                onPressed: () async {
+                  await ref.read(authControllerProvider.notifier).bypassAuthForTesting();
+                  if (mounted) context.go('/home');
+                },
+                icon: const Icon(Icons.flash_on),
+                label: const Text('⚡ SKIP / TEST MODE (BYPASS AUTH)'),
+              ),
             ],
           ),
         ),

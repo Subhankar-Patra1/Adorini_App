@@ -1,19 +1,19 @@
-/// Backend API configuration.
-///
-/// Routes verified against `Adorini_Backend/src/modules/*/controllers`.
-/// The server sets a global prefix of `/api` (env `API_PREFIX`) with **no**
-/// version segment — do not add `/v1`.
-///
-/// Override the host at build/run time with:
-///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
-/// (10.0.2.2 is how the Android emulator reaches the host machine's localhost.)
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+
 class ApiConstants {
   const ApiConstants._();
 
-  static const String baseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://localhost:3000/api',
-  );
+  static String get baseUrl {
+    const String envUrl = String.fromEnvironment('API_BASE_URL');
+    if (envUrl.isNotEmpty) return envUrl;
+    
+    // Auto-detect based on platform
+    if (!kIsWeb && Platform.isAndroid) {
+      return 'http://10.0.2.2:3000/api';
+    }
+    return 'http://localhost:3000/api';
+  }
 
   // ---- auth ----
   static const String otpRequest = '/auth/otp/request';

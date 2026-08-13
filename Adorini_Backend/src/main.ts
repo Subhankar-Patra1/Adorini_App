@@ -54,7 +54,8 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  await app.listen(port);
+  app.enableCors();
+  await app.listen(port, '0.0.0.0');
 
   logger.log(`Adorini API listening on :${port} (${nodeEnv})`);
   if (nodeEnv !== 'production') {

@@ -71,7 +71,7 @@ class DioClient {
     try {
       final Dio refreshDio = Dio(BaseOptions(baseUrl: ApiConstants.baseUrl));
       final Response<Map<String, dynamic>> response = await refreshDio.post<Map<String, dynamic>>(
-        ApiConstants.authRefresh,
+        ApiConstants.refresh,
         data: <String, String>{'refreshToken': refreshToken},
       );
 
