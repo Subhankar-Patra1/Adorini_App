@@ -46,7 +46,9 @@ List<_ParsedPathData> _getOrParsePaths() {
   return _cachedPaths!;
 }
 
-/// A luxury animated Adorini logo widget recreating the stroke-draw and fill-in sequence.
+/// A luxury animated Adorini logo/wordmark widget recreating the stroke-draw and fill-in sequence.
+typedef AdoriniAnimatedWordmark = AdoriniAnimatedLogo;
+
 class AdoriniAnimatedLogo extends StatefulWidget {
   const AdoriniAnimatedLogo({
     super.key,
