@@ -95,25 +95,6 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
-  Future<void> bypassAuthForTesting() async {
-    await _tokenStorage.saveTokens(
-      accessToken: 'test_dev_bypass_token',
-      refreshToken: 'test_dev_bypass_refresh_token',
-    );
-    state = state.copyWith(
-      status: AuthStatus.authenticated,
-      isLoading: false,
-      user: const PublicUser(
-        id: 'test-user-id',
-        fullName: 'Adorini Guest (Dev)',
-        phone: '+919876543210',
-        gender: 'FEMALE',
-        isPhoneVerified: true,
-        hasGoogleLinked: false,
-      ),
-    );
-  }
-
   Future<void> logout() async {
     final String? refreshToken = await _tokenStorage.readRefreshToken();
     if (refreshToken != null) {

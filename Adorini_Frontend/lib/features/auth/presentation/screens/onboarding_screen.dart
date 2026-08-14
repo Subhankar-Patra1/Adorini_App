@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -155,28 +154,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 textAlign: TextAlign.center,
                 style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
               ),
-
-              // Debug-only. The token it stores is a placeholder string, so the
-              // backend's JwtAuthGuard rejects it and every authenticated call
-              // 401s — it only unlocks navigation for UI work. `kDebugMode`
-              // keeps the button out of release builds entirely, where a
-              // visible "bypass auth" control has no business being.
-              if (kDebugMode) ...<Widget>[
-                const SizedBox(height: AppSpacing.lg),
-                const Divider(),
-                const SizedBox(height: AppSpacing.sm),
-                FilledButton.tonalIcon(
-                  onPressed: () async {
-                    await ref.read(authControllerProvider.notifier).bypassAuthForTesting();
-                    if (!context.mounted) {
-                      return;
-                    }
-                    context.go('/home');
-                  },
-                  icon: const Icon(Icons.flash_on),
-                  label: const Text('⚡ SKIP / TEST MODE (BYPASS AUTH)'),
-                ),
-              ],
             ],
           ),
         ),

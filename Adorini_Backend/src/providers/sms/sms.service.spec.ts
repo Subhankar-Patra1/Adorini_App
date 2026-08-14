@@ -1,5 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 
 import { SmsService, SmsProviderError } from './sms.service';
 
@@ -55,6 +56,65 @@ describe('SmsService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  /**
+   * Local-dev seam: placeholder MSG91 credentials make every login impossible,
+   * because no SMS can arrive. These tests pin both halves of that trade — the
+   * code reaches the console in development, and never at the cost of a real
+   * send happening in production.
+   */
+  describe('placeholder-credential OTP logging', () => {
+    async function buildWith(overrides: Record<string, string>): Promise<SmsService> {
+      const merged = { ...config, ...overrides } as Record<string, string>;
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          SmsService,
+          {
+            provide: ConfigService,
+            useValue: { get: jest.fn((key: string) => merged[key] ?? '') },
+          },
+        ],
+      }).compile();
+      return module.get<SmsService>(SmsService);
+    }
+
+    it('logs the code and skips MSG91 when credentials are placeholders', async () => {
+      const dev = await buildWith({
+        NODE_ENV: 'development',
+        MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+      });
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+      await expect(dev.sendOtp('919999999999', '123456')).resolves.toBeUndefined();
+
+      expect(global.fetch).not.toHaveBeenCalled();
+      // The code must be printed in full — a masked one would be useless.
+      expect(warn.mock.calls.flat().join(' ')).toContain('123456');
+      warn.mockRestore();
+    });
+
+    it('still calls MSG91 in production even if a credential looks like a placeholder', async () => {
+      const prod = await buildWith({
+        NODE_ENV: 'production',
+        MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+      });
+      mockFetchOnce({ ok: true, json: { type: 'success' } });
+
+      await prod.sendOtp('919999999999', '123456');
+
+      // env validation blocks this config from booting production at all; if it
+      // ever ran, it must not silently swallow OTPs into a log file.
+      expect(global.fetch).toHaveBeenCalled();
+    });
+
+    it('calls MSG91 normally when credentials are real', async () => {
+      mockFetchOnce({ ok: true, json: { type: 'success' } });
+
+      await service.sendOtp('919999999999', '123456');
+
+      expect(global.fetch).toHaveBeenCalled();
+    });
   });
 
   describe('sendOtp', () => {

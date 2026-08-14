@@ -21,12 +21,48 @@ import '../features/account/presentation/screens/profile_screen.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import 'app_shell.dart';
 
+/// Nudges GoRouter to re-run [GoRouter.redirect] when sign-in state changes,
+/// without rebuilding the router itself.
+///
+/// The router must be built exactly once. `MaterialApp.router` treats a new
+/// `routerConfig` as a new Navigator and rebuilds the entire widget tree from
+/// scratch, destroying the `State` of whatever screen is on top. Watching
+/// `authControllerProvider` here did precisely that: `AuthState` has no `==`,
+/// so every `copyWith` — including the `isLoading` true/false pair that each
+/// auth call emits — produced a fresh router and wiped the screen. Tapping
+/// "SEND CODE" therefore reset OnboardingScreen's `_otpSent` back to false and
+/// the OTP field could never appear.
+///
+/// Only `status` is worth a refresh; `isLoading` and `error` change constantly
+/// during a login and never affect where the user should be routed.
+class AuthRouterRefresh extends ChangeNotifier {
+  AuthRouterRefresh(Ref ref) {
+    ref.listen<AuthState>(authControllerProvider, (AuthState? previous, AuthState next) {
+      if (previous?.status != next.status) {
+        notifyListeners();
+      }
+    });
+  }
+}
+
+final Provider<AuthRouterRefresh> _authRouterRefreshProvider =
+    Provider<AuthRouterRefresh>((Ref ref) {
+  final AuthRouterRefresh refresh = AuthRouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
+  return refresh;
+});
+
 final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
-  final AuthState authState = ref.watch(authControllerProvider);
+  // Identity-stable: this provider never rebuilds, so neither does the router.
+  final AuthRouterRefresh refresh = ref.watch(_authRouterRefreshProvider);
 
   return GoRouter(
     initialLocation: '/splash',
+    refreshListenable: refresh,
     redirect: (BuildContext context, GoRouterState state) {
+      // Read, not watch — the refreshListenable above decides when this re-runs.
+      final AuthState authState = ref.read(authControllerProvider);
+
       final bool onSplash = state.matchedLocation == '/splash';
       if (onSplash) return null;
 

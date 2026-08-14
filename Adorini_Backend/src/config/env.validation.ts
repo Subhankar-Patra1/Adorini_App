@@ -226,7 +226,7 @@ const PLACEHOLDER_PATTERNS = [
   /^test[-_]?(key|secret|token)$/i,
 ];
 
-function looksLikePlaceholder(value: string): boolean {
+export function looksLikePlaceholder(value: string): boolean {
   return PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value.trim()));
 }
 

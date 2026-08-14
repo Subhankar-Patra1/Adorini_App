@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import type { Env } from '../../config/env.validation';
+import { looksLikePlaceholder } from '../../config/env.validation';
 import { UpstreamTimeoutError, fetchWithTimeout } from '../../common/http/fetch-with-timeout';
 
 const MSG91_BASE_URL = 'https://control.msg91.com/api/v5';
@@ -37,11 +38,36 @@ export class SmsService {
   private readonly authKey: string;
   private readonly otpTemplateId: string;
   private readonly whatsappNumber: string;
+  private readonly logOtpInsteadOfSending: boolean;
 
   constructor(config: ConfigService<Env, true>) {
     this.authKey = config.get('MSG91_AUTH_KEY', { infer: true });
     this.otpTemplateId = config.get('MSG91_OTP_TEMPLATE_ID', { infer: true });
     this.whatsappNumber = config.get('MSG91_WHATSAPP_NUMBER', { infer: true });
+
+    /**
+     * Local-development seam: with placeholder MSG91 credentials no SMS can
+     * ever arrive, so every guarded route is unreachable because nobody can
+     * complete a login. Printing the code to the server console keeps the
+     * authenticated half of the app testable before Phase 3 wires real keys.
+     *
+     * Safe by construction rather than by discipline: `validateEnv` already
+     * refuses to boot production when `MSG91_AUTH_KEY` or
+     * `MSG91_OTP_TEMPLATE_ID` look like placeholders, so the condition below
+     * cannot be true in a production process. The explicit NODE_ENV check is
+     * belt-and-braces — it keeps this branch dead in production even if that
+     * secrets list is ever narrowed.
+     */
+    const nodeEnv = config.get('NODE_ENV', { infer: true });
+    this.logOtpInsteadOfSending =
+      nodeEnv !== 'production' &&
+      (looksLikePlaceholder(this.authKey) || looksLikePlaceholder(this.otpTemplateId));
+
+    if (this.logOtpInsteadOfSending) {
+      this.logger.warn(
+        'MSG91 credentials are placeholders — OTPs will be printed to this console instead of sent by SMS. Never expected outside local development.',
+      );
+    }
   }
 
   /**
@@ -54,6 +80,11 @@ export class SmsService {
    * real traffic depends on them.
    */
   async sendOtp(phone: string, otp?: string): Promise<void> {
+    if (this.logOtpInsteadOfSending) {
+      this.logDevOtp(phone, otp);
+      return;
+    }
+
     const url = new URL(`${MSG91_BASE_URL}/otp`);
     url.searchParams.set('template_id', this.otpTemplateId);
     url.searchParams.set('mobile', phone);
@@ -239,6 +270,29 @@ export class SmsService {
 
     this.logger.error(`MSG91 ${operation} was unreachable`, error);
     return new SmsProviderError(`MSG91 ${operation} was unreachable`, undefined, error);
+  }
+
+  /**
+   * Prints the login code to the server console in place of an SMS.
+   *
+   * The phone stays masked as everywhere else, but the code itself is printed
+   * in full — a masked code would defeat the entire purpose. This runs only on
+   * the placeholder-credential path guarded in the constructor.
+   */
+  private logDevOtp(phone: string, otp?: string): void {
+    if (!otp) {
+      // Both current callers generate the code themselves and pass it here. A
+      // caller that instead relies on MSG91 to invent one has nothing to print,
+      // and the resulting code would be unverifiable anyway.
+      this.logger.error(
+        `Cannot print an OTP for ${this.maskPhone(phone)}: no code was supplied, and MSG91 is not being called to generate one. This login cannot be completed with placeholder credentials.`,
+      );
+      return;
+    }
+
+    this.logger.warn(
+      `[DEV OTP] ${this.maskPhone(phone)} -> ${otp}  (no SMS sent; placeholder MSG91 credentials)`,
+    );
   }
 
   /** Phone numbers are personal data; logs get the last four digits only. */
