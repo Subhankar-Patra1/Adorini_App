@@ -100,16 +100,18 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               if (items.isEmpty) {
                 return const Text('No saved addresses yet. Add one to continue.');
               }
-              return Column(
-                children: items
-                    .map((Address address) => RadioListTile<String>(
-                          value: address.id,
-                          groupValue: _addressId,
-                          onChanged: (String? value) => setState(() => _addressId = value),
-                          title: Text(address.recipientName),
-                          subtitle: Text(address.formatted),
-                        ))
-                    .toList(),
+              return RadioGroup<String>(
+                groupValue: _addressId,
+                onChanged: (String? value) => setState(() => _addressId = value),
+                child: Column(
+                  children: items
+                      .map((Address address) => RadioListTile<String>(
+                            value: address.id,
+                            title: Text(address.recipientName),
+                            subtitle: Text(address.formatted),
+                          ))
+                      .toList(),
+                ),
               );
             },
             error: (Object e, StackTrace s) => Text('Failed to load addresses: $e'),
@@ -119,13 +121,17 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           const SizedBox(height: AppSpacing.lg),
           Text('Payment', style: AppTypography.labelBold),
           const SizedBox(height: AppSpacing.xs),
-          ...PaymentMethod.values.map(
-            (PaymentMethod method) => RadioListTile<PaymentMethod>(
-              value: method,
-              groupValue: _paymentMethod,
-              onChanged: (PaymentMethod? value) =>
-                  setState(() => _paymentMethod = value ?? PaymentMethod.cod),
-              title: Text(method.label),
+          RadioGroup<PaymentMethod>(
+            groupValue: _paymentMethod,
+            onChanged: (PaymentMethod? value) =>
+                setState(() => _paymentMethod = value ?? PaymentMethod.cod),
+            child: Column(
+              children: PaymentMethod.values
+                  .map((PaymentMethod method) => RadioListTile<PaymentMethod>(
+                        value: method,
+                        title: Text(method.label),
+                      ))
+                  .toList(),
             ),
           ),
 

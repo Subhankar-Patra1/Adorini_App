@@ -152,46 +152,54 @@ class _ReturnRequestScreenState extends ConsumerState<ReturnRequestScreen> {
         Step(
           title: const Text('Which item?'),
           isActive: _step >= 0,
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: items.map((EligibleItem item) {
-              // Ineligible lines are shown *with the reason* rather than hidden,
-              // so the shopper understands why the option is unavailable.
-              return RadioListTile<String>(
-                value: item.orderItemId,
-                groupValue: _item?.orderItemId,
-                onChanged: item.isEligible
-                    ? (String? _) => setState(() {
-                          _item = item;
-                          _quantity = 1;
-                        })
-                    : null,
-                title: Text(item.productName),
-                subtitle: Text(
-                  item.isEligible
-                      ? 'Size ${item.nominalSize} • ${item.colour} • Qty ${item.quantity}'
-                      : (item.reasonIneligible ?? 'Not eligible for return'),
-                  style: item.isEligible
-                      ? null
-                      : AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
-                ),
-              );
-            }).toList(),
+          content: RadioGroup<String>(
+            groupValue: _item?.orderItemId,
+            onChanged: (String? value) {
+              if (value == null) {
+                return;
+              }
+              setState(() {
+                _item = items.firstWhere((EligibleItem i) => i.orderItemId == value);
+                _quantity = 1;
+              });
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: items.map((EligibleItem item) {
+                // Ineligible lines are shown *with the reason* rather than hidden,
+                // so the shopper understands why the option is unavailable.
+                return RadioListTile<String>(
+                  value: item.orderItemId,
+                  enabled: item.isEligible,
+                  title: Text(item.productName),
+                  subtitle: Text(
+                    item.isEligible
+                        ? 'Size ${item.nominalSize} • ${item.colour} • Qty ${item.quantity}'
+                        : (item.reasonIneligible ?? 'Not eligible for return'),
+                    style: item.isEligible
+                        ? null
+                        : AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
         ),
         Step(
           title: const Text('Why?'),
           isActive: _step >= 1,
-          content: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: ReturnReason.values
-                .map((ReturnReason reason) => RadioListTile<ReturnReason>(
-                      value: reason,
-                      groupValue: _reason,
-                      onChanged: (ReturnReason? value) => setState(() => _reason = value),
-                      title: Text(reason.label),
-                    ))
-                .toList(),
+          content: RadioGroup<ReturnReason>(
+            groupValue: _reason,
+            onChanged: (ReturnReason? value) => setState(() => _reason = value),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: ReturnReason.values
+                  .map((ReturnReason reason) => RadioListTile<ReturnReason>(
+                        value: reason,
+                        title: Text(reason.label),
+                      ))
+                  .toList(),
+            ),
           ),
         ),
         Step(

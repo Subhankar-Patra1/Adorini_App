@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Flutter's generated manifests declare INTERNET only for the debug and
+         profile variants, where the tool needs it for hot reload. A release
+         build without it installs and launches normally but every network call
+         fails silently — so the app itself must declare it here. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="adorini_frontend"
         android:name="${applicationName}"

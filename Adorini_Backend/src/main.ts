@@ -54,7 +54,34 @@ async function bootstrap(): Promise<void> {
     });
   }
 
-  app.enableCors();
+  /**
+   * CORS is a *browser* mechanism — the Flutter mobile client is not subject to
+   * it and needs none of this. So the allow-list is empty unless someone opts
+   * in, and a bare `enableCors()` (which reflects any origin back) is
+   * deliberately not used: it would let every site on the internet issue
+   * credentialed calls to this API for no benefit to the app that actually
+   * ships.
+   *
+   * In development the localhost origins are allowed regardless, so Swagger UI
+   * and a `flutter run -d chrome` session work without configuration.
+   */
+  const configuredOrigins = config.get('CORS_ALLOWED_ORIGINS', { infer: true });
+  const devOrigins =
+    nodeEnv === 'production'
+      ? []
+      : [/^http:\/\/localhost(:\d+)?$/, /^http:\/\/127\.0\.0\.1(:\d+)?$/];
+  const allowedOrigins = [...configuredOrigins, ...devOrigins];
+
+  if (allowedOrigins.length > 0) {
+    app.enableCors({ origin: allowedOrigins, credentials: true });
+    logger.log(`CORS enabled for: ${configuredOrigins.join(', ') || 'localhost (dev only)'}`);
+  }
+
+  /**
+   * Binding 0.0.0.0 rather than the default loopback is what lets an Android
+   * emulator reach the host through 10.0.2.2, and a physical device reach it
+   * over the LAN.
+   */
   await app.listen(port, '0.0.0.0');
 
   logger.log(`Adorini API listening on :${port} (${nodeEnv})`);

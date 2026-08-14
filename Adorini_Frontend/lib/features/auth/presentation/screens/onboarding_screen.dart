@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -141,12 +142,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
 
               const SizedBox(height: AppSpacing.md),
-              OutlinedButton(
+              const OutlinedButton(
                 // Google Sign-In needs a platform SDK to mint the idToken that
                 // `AuthController.signInWithGoogle` expects; the plugin and
                 // OAuth client are not configured in this build yet.
                 onPressed: null,
-                child: const Text('CONTINUE WITH GOOGLE'),
+                child: Text('CONTINUE WITH GOOGLE'),
               ),
               const SizedBox(height: AppSpacing.xs),
               Text(
@@ -155,17 +156,27 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
               ),
 
-              const SizedBox(height: AppSpacing.lg),
-              const Divider(),
-              const SizedBox(height: AppSpacing.sm),
-              FilledButton.tonalIcon(
-                onPressed: () async {
-                  await ref.read(authControllerProvider.notifier).bypassAuthForTesting();
-                  if (mounted) context.go('/home');
-                },
-                icon: const Icon(Icons.flash_on),
-                label: const Text('⚡ SKIP / TEST MODE (BYPASS AUTH)'),
-              ),
+              // Debug-only. The token it stores is a placeholder string, so the
+              // backend's JwtAuthGuard rejects it and every authenticated call
+              // 401s — it only unlocks navigation for UI work. `kDebugMode`
+              // keeps the button out of release builds entirely, where a
+              // visible "bypass auth" control has no business being.
+              if (kDebugMode) ...<Widget>[
+                const SizedBox(height: AppSpacing.lg),
+                const Divider(),
+                const SizedBox(height: AppSpacing.sm),
+                FilledButton.tonalIcon(
+                  onPressed: () async {
+                    await ref.read(authControllerProvider.notifier).bypassAuthForTesting();
+                    if (!context.mounted) {
+                      return;
+                    }
+                    context.go('/home');
+                  },
+                  icon: const Icon(Icons.flash_on),
+                  label: const Text('⚡ SKIP / TEST MODE (BYPASS AUTH)'),
+                ),
+              ],
             ],
           ),
         ),

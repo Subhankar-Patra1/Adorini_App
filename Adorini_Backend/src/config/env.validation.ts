@@ -11,6 +11,26 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   API_PREFIX: z.string().default('api'),
 
+  /**
+   * Comma-separated browser origins allowed to call the API.
+   *
+   * Empty by default, and that default is correct for the mobile app: CORS is a
+   * browser mechanism, so a Flutter Android/iOS client is unaffected by it
+   * entirely. Only fill this in for something that genuinely runs in a browser —
+   * Flutter web, or an admin panel.
+   */
+  CORS_ALLOWED_ORIGINS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((origin) => origin.trim())
+            .filter(Boolean)
+        : [],
+    ),
+
   // ---- Database (PostgreSQL 18.4 on Railway) ----
   DATABASE_URL: z.url({ error: 'DATABASE_URL must be a valid connection URL' }),
   DATABASE_SSL: z
