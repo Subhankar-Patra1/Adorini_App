@@ -18,14 +18,18 @@ import '../features/orders/presentation/screens/returns/returns_list_screen.dart
 import '../features/orders/presentation/screens/returns/return_request_screen.dart';
 import '../features/growth/presentation/screens/wallet_screen.dart';
 import '../features/account/presentation/screens/profile_screen.dart';
+import '../features/splash/presentation/screens/splash_screen.dart';
 import 'app_shell.dart';
 
 final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
   final AuthState authState = ref.watch(authControllerProvider);
 
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/splash',
     redirect: (BuildContext context, GoRouterState state) {
+      final bool onSplash = state.matchedLocation == '/splash';
+      if (onSplash) return null;
+
       final bool onOnboarding = state.matchedLocation == '/onboarding';
       if (authState.status == AuthStatus.unknown) return null;
       if (!authState.isAuthenticated && !onOnboarding) return '/onboarding';
@@ -33,6 +37,10 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
       return null;
     },
     routes: <RouteBase>[
+      GoRoute(
+        path: '/splash',
+        builder: (BuildContext context, GoRouterState state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/onboarding',
         builder: (BuildContext context, GoRouterState state) => const OnboardingScreen(),
