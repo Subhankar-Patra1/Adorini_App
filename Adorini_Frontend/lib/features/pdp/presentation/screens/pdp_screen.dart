@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/constants/domain_enums.dart';
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -29,7 +30,8 @@ class _PdpScreenState extends ConsumerState<PdpScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<ProductDetail> product = ref.watch(productDetailProvider(widget.slug));
+    final AsyncValue<ProductDetail> product =
+        ref.watch(productDetailProvider(widget.slug));
 
     return Scaffold(
       body: product.when(
@@ -38,10 +40,11 @@ class _PdpScreenState extends ConsumerState<PdpScreen> {
           selectedSize: _selectedSize,
           selectedColour: _selectedColour,
           onSizeChanged: (int? size) => setState(() => _selectedSize = size),
-          onColourChanged: (String? colour) => setState(() => _selectedColour = colour),
+          onColourChanged: (String? colour) =>
+              setState(() => _selectedColour = colour),
         ),
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load product: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );
@@ -84,8 +87,10 @@ class _Body extends ConsumerWidget {
                         .map((MediaItem m) => CachedNetworkImage(
                               imageUrl: m.url,
                               fit: BoxFit.cover,
-                              errorWidget: (BuildContext c, String u, Object e) =>
-                                  const ColoredBox(color: AppColors.surfaceContainer),
+                              errorWidget:
+                                  (BuildContext c, String u, Object e) =>
+                                      const ColoredBox(
+                                          color: AppColors.surfaceContainer),
                             ))
                         .toList(),
                   ),
@@ -95,13 +100,15 @@ class _Body extends ConsumerWidget {
           padding: const EdgeInsets.all(AppSpacing.containerMargin),
           sliver: SliverList(
             delegate: SliverChildListDelegate(<Widget>[
-              Text(detail.brandName.toUpperCase(), style: AppTypography.labelBold),
+              Text(detail.brandName.toUpperCase(),
+                  style: AppTypography.labelBold),
               const SizedBox(height: AppSpacing.xs),
               Text(detail.name, style: AppTypography.headlineLgMobile),
               const SizedBox(height: AppSpacing.xs),
               Row(
                 children: <Widget>[
-                  Text(detail.pricePaise.asRupees, style: AppTypography.priceDisplay),
+                  Text(detail.pricePaise.asRupees,
+                      style: AppTypography.priceDisplay),
                   if (detail.isDiscounted) ...<Widget>[
                     const SizedBox(width: AppSpacing.sm),
                     Text(
@@ -132,7 +139,8 @@ class _Body extends ConsumerWidget {
 
               // The fit signal that justifies the whole size-chart feature.
               if (detail.reviewSummary.dominantFitTag != null &&
-                  detail.reviewSummary.dominantFitTag != FitTag.trueToSize) ...<Widget>[
+                  detail.reviewSummary.dominantFitTag !=
+                      FitTag.trueToSize) ...<Widget>[
                 const SizedBox(height: AppSpacing.sm),
                 Container(
                   padding: const EdgeInsets.all(AppSpacing.sm),
@@ -156,7 +164,8 @@ class _Body extends ConsumerWidget {
                   return ChoiceChip(
                     label: Text('$size'),
                     selected: selectedSize == size,
-                    onSelected: (bool selected) => onSizeChanged(selected ? size : null),
+                    onSelected: (bool selected) =>
+                        onSizeChanged(selected ? size : null),
                   );
                 }).toList(),
               ),
@@ -165,7 +174,8 @@ class _Body extends ConsumerWidget {
                 onPressed: () => showModalBottomSheet<void>(
                   context: context,
                   isScrollControlled: true,
-                  builder: (BuildContext context) => SizeEnquirySheet(slug: detail.slug),
+                  builder: (BuildContext context) =>
+                      SizeEnquirySheet(slug: detail.slug),
                 ),
                 child: const Text('Need a size outside 40–48?'),
               ),
@@ -180,7 +190,8 @@ class _Body extends ConsumerWidget {
                     return ChoiceChip(
                       label: Text(colour),
                       selected: selectedColour == colour,
-                      onSelected: (bool selected) => onColourChanged(selected ? colour : null),
+                      onSelected: (bool selected) =>
+                          onColourChanged(selected ? colour : null),
                     );
                   }).toList(),
                 ),

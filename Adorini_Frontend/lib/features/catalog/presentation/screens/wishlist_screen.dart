@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../data/product_model.dart';
 import '../../domain/catalog_providers.dart';
@@ -12,7 +13,8 @@ class WishlistScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<ProductSummary>> wishlist = ref.watch(wishlistProvider);
+    final AsyncValue<List<ProductSummary>> wishlist =
+        ref.watch(wishlistProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Wishlist')),
@@ -23,11 +25,11 @@ class WishlistScreen extends ConsumerWidget {
           }
           return GridView.builder(
             padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.md,
-              crossAxisSpacing: AppSpacing.md,
-              childAspectRatio: 0.62,
+            // Was `childAspectRatio: 0.62` — tighter still than the 0.58 that
+            // clipped Home and Catalog, so this grid cut names worst of all.
+            gridDelegate: ProductCard.gridDelegate(
+              context,
+              viewportWidth: MediaQuery.sizeOf(context).width,
             ),
             itemCount: items.length,
             itemBuilder: (BuildContext context, int index) {
@@ -39,7 +41,8 @@ class WishlistScreen extends ConsumerWidget {
             },
           );
         },
-        error: (Object error, StackTrace stackTrace) => Center(child: Text('Failed to load: $error')),
+        error: (Object error, StackTrace stackTrace) =>
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );

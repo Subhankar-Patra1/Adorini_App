@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -15,7 +16,8 @@ class OrderHistoryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<OrderSummary>> orders = ref.watch(orderHistoryProvider);
+    final AsyncValue<List<OrderSummary>> orders =
+        ref.watch(orderHistoryProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('My Orders')),
@@ -29,7 +31,8 @@ class OrderHistoryScreen extends ConsumerWidget {
             child: ListView.separated(
               padding: const EdgeInsets.all(AppSpacing.containerMargin),
               itemCount: items.length,
-              separatorBuilder: (BuildContext c, int i) => const SizedBox(height: AppSpacing.sm),
+              separatorBuilder: (BuildContext c, int i) =>
+                  const SizedBox(height: AppSpacing.sm),
               itemBuilder: (BuildContext context, int index) {
                 final OrderSummary order = items[index];
                 return Card(
@@ -68,7 +71,7 @@ class OrderHistoryScreen extends ConsumerWidget {
           );
         },
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load orders: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );

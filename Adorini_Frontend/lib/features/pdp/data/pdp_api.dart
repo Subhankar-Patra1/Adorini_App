@@ -80,10 +80,12 @@ class ReviewSummary {
       // Null rather than 0 when there are no reviews — 0.0 stars reads as a
       // bad product rather than an unreviewed one.
       averageRating: (json['averageRating'] as num?)?.toDouble(),
-      ratingCounts: (json['ratingCounts'] as Map<String, dynamic>? ?? <String, dynamic>{})
-          .map((String k, dynamic v) => MapEntry<String, int>(k, v as int)),
-      fitTagCounts: (json['fitTagCounts'] as Map<String, dynamic>? ?? <String, dynamic>{})
-          .map((String k, dynamic v) => MapEntry<String, int>(k, v as int)),
+      ratingCounts:
+          (json['ratingCounts'] as Map<String, dynamic>? ?? <String, dynamic>{})
+              .map((String k, dynamic v) => MapEntry<String, int>(k, v as int)),
+      fitTagCounts:
+          (json['fitTagCounts'] as Map<String, dynamic>? ?? <String, dynamic>{})
+              .map((String k, dynamic v) => MapEntry<String, int>(k, v as int)),
     );
   }
 
@@ -95,8 +97,8 @@ class ReviewSummary {
   /// Powers the "most buyers say this runs small" line above the size chart.
   FitTag? get dominantFitTag {
     if (fitTagCounts.isEmpty) return null;
-    final MapEntry<String, int> top =
-        fitTagCounts.entries.reduce((MapEntry<String, int> a, MapEntry<String, int> b) =>
+    final MapEntry<String, int> top = fitTagCounts.entries.reduce(
+        (MapEntry<String, int> a, MapEntry<String, int> b) =>
             a.value >= b.value ? a : b);
     return top.value > 0 ? FitTag.fromWire(top.key) : null;
   }
@@ -124,9 +126,10 @@ class ProductDetail {
   });
 
   factory ProductDetail.fromJson(Map<String, dynamic> json) {
-    List<MediaItem> media(String key) => (json[key] as List<dynamic>? ?? <dynamic>[])
-        .map((dynamic e) => MediaItem.fromJson(e as Map<String, dynamic>))
-        .toList();
+    List<MediaItem> media(String key) =>
+        (json[key] as List<dynamic>? ?? <dynamic>[])
+            .map((dynamic e) => MediaItem.fromJson(e as Map<String, dynamic>))
+            .toList();
 
     return ProductDetail(
       id: json['id'] as String,
@@ -136,20 +139,27 @@ class ProductDetail {
       pricePaise: json['pricePaise'] as int,
       compareAtPricePaise: json['compareAtPricePaise'] as int?,
       fabricType: FabricType.fromWire(json['fabricType'] as String),
-      printTechnique: PrintTechnique.fromWire(json['printTechnique'] as String?),
-      categoryName: (json['category'] as Map<String, dynamic>)['name'] as String,
+      printTechnique:
+          PrintTechnique.fromWire(json['printTechnique'] as String?),
+      categoryName:
+          (json['category'] as Map<String, dynamic>)['name'] as String,
       brandName: (json['brand'] as Map<String, dynamic>)['name'] as String,
       variants: (json['variants'] as List<dynamic>? ?? <dynamic>[])
-          .map((dynamic e) => ProductVariant.fromJson(e as Map<String, dynamic>))
+          .map(
+              (dynamic e) => ProductVariant.fromJson(e as Map<String, dynamic>))
           .toList(),
-      availableSizes: (json['availableSizes'] as List<dynamic>? ?? <dynamic>[]).cast<int>(),
-      availableColours: (json['availableColours'] as List<dynamic>? ?? <dynamic>[]).cast<String>(),
+      availableSizes:
+          (json['availableSizes'] as List<dynamic>? ?? <dynamic>[]).cast<int>(),
+      availableColours:
+          (json['availableColours'] as List<dynamic>? ?? <dynamic>[])
+              .cast<String>(),
       officialMedia: media('officialMedia'),
       buyerMedia: media('buyerMedia'),
       // Null when the product has no chart, or a malformed one — the UI falls
       // back to the size-enquiry form.
       sizeChart: json['sizeChart'] as Map<String, dynamic>?,
-      reviewSummary: ReviewSummary.fromJson(json['reviewSummary'] as Map<String, dynamic>),
+      reviewSummary:
+          ReviewSummary.fromJson(json['reviewSummary'] as Map<String, dynamic>),
     );
   }
 
@@ -171,20 +181,24 @@ class ProductDetail {
   final Map<String, dynamic>? sizeChart;
   final ReviewSummary reviewSummary;
 
-  bool get isDiscounted => compareAtPricePaise != null && compareAtPricePaise! > pricePaise;
+  bool get isDiscounted =>
+      compareAtPricePaise != null && compareAtPricePaise! > pricePaise;
 
   /// The variant to add to the cart for a chosen size/colour, or null if that
   /// combination is not stocked.
   ProductVariant? variantFor({required int size, String? colour}) {
     for (final ProductVariant v in variants) {
-      if (v.nominalSize == size && (colour == null || v.colour == colour)) return v;
+      if (v.nominalSize == size && (colour == null || v.colour == colour)) {
+        return v;
+      }
     }
     return null;
   }
 }
 
 class SizeEnquiryResult {
-  const SizeEnquiryResult({required this.id, required this.requestedSize, required this.status});
+  const SizeEnquiryResult(
+      {required this.id, required this.requestedSize, required this.status});
 
   factory SizeEnquiryResult.fromJson(Map<String, dynamic> json) {
     return SizeEnquiryResult(
@@ -220,7 +234,8 @@ class PdpApi {
     required String contactPhone,
     String? message,
   }) async {
-    final Response<Map<String, dynamic>> response = await _dio.post<Map<String, dynamic>>(
+    final Response<Map<String, dynamic>> response =
+        await _dio.post<Map<String, dynamic>>(
       ApiConstants.sizeEnquiry(slug),
       data: <String, String>{
         'requestedSize': requestedSize,

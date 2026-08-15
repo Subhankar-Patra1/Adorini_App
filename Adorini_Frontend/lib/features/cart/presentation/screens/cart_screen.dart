@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
@@ -53,7 +54,7 @@ class CartScreen extends ConsumerWidget {
           );
         },
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load cart: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );
@@ -83,7 +84,8 @@ class _CartLineTile extends ConsumerWidget {
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     'Size ${line.nominalSize} • ${line.colour}',
-                    style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+                    style: AppTypography.bodyMd
+                        .copyWith(color: AppColors.onSurfaceVariant),
                   ),
                   if (!line.inStock)
                     Text(
@@ -92,18 +94,23 @@ class _CartLineTile extends ConsumerWidget {
                           .copyWith(color: Theme.of(context).colorScheme.error),
                     )
                   else if (line.stockQuantity <= 3)
-                    Text('Only ${line.stockQuantity} left', style: AppTypography.labelBold),
+                    Text('Only ${line.stockQuantity} left',
+                        style: AppTypography.labelBold),
                   const SizedBox(height: AppSpacing.xs),
-                  Text(line.lineTotalPaise.asRupees, style: AppTypography.priceDisplay),
+                  Text(line.lineTotalPaise.asRupees,
+                      style: AppTypography.priceDisplay),
                 ],
               ),
             ),
             Column(
               children: <Widget>[
                 IconButton(
-                  icon: Icon(line.quantity > 1 ? Icons.remove_circle_outline : Icons.delete_outline),
+                  icon: Icon(line.quantity > 1
+                      ? Icons.remove_circle_outline
+                      : Icons.delete_outline),
                   onPressed: () => line.quantity > 1
-                      ? controller.updateQuantity(lineId: line.id, quantity: line.quantity - 1)
+                      ? controller.updateQuantity(
+                          lineId: line.id, quantity: line.quantity - 1)
                       : controller.removeItem(line.id),
                 ),
                 Text('${line.quantity}', style: AppTypography.bodyMd),
@@ -188,13 +195,16 @@ class _CartSummaryState extends ConsumerState<_CartSummary> {
           if (widget.cart.couponMessage != null)
             Text(
               widget.cart.couponMessage!,
-              style: AppTypography.bodyMd.copyWith(color: Theme.of(context).colorScheme.error),
+              style: AppTypography.bodyMd
+                  .copyWith(color: Theme.of(context).colorScheme.error),
             ),
           const SizedBox(height: AppSpacing.sm),
           _SummaryRow(label: 'Subtotal', valuePaise: totals.subtotalPaise),
           if (totals.discountPaise > 0)
             _SummaryRow(
-              label: totals.discountSource == 'FIRST_ORDER' ? 'First order discount' : 'Coupon',
+              label: totals.discountSource == 'FIRST_ORDER'
+                  ? 'First order discount'
+                  : 'Coupon',
               valuePaise: -totals.discountPaise,
             ),
           _SummaryRow(
@@ -203,20 +213,26 @@ class _CartSummaryState extends ConsumerState<_CartSummary> {
             freeWhenZero: true,
           ),
           if (totals.walletCreditPaise > 0)
-            _SummaryRow(label: 'Wallet credit', valuePaise: -totals.walletCreditPaise),
+            _SummaryRow(
+                label: 'Wallet credit', valuePaise: -totals.walletCreditPaise),
           const Divider(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
               Text('Total', style: AppTypography.titleMd),
-              Text(totals.totalPaise.asRupees, style: AppTypography.priceDisplay),
+              Text(totals.totalPaise.asRupees,
+                  style: AppTypography.priceDisplay),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
           ElevatedButton(
-            onPressed: widget.cart.isPurchasable ? () => context.push('/checkout') : null,
+            onPressed: widget.cart.isPurchasable
+                ? () => context.push('/checkout')
+                : null,
             child: Text(
-              widget.cart.isPurchasable ? 'PROCEED TO CHECKOUT' : 'REMOVE UNAVAILABLE ITEMS',
+              widget.cart.isPurchasable
+                  ? 'PROCEED TO CHECKOUT'
+                  : 'REMOVE UNAVAILABLE ITEMS',
             ),
           ),
         ],
@@ -247,7 +263,9 @@ class _SummaryRow extends StatelessWidget {
           Text(
             freeWhenZero && valuePaise == 0
                 ? 'FREE'
-                : (valuePaise < 0 ? '- ${(-valuePaise).asRupees}' : valuePaise.asRupees),
+                : (valuePaise < 0
+                    ? '- ${(-valuePaise).asRupees}'
+                    : valuePaise.asRupees),
             style: AppTypography.bodyMd,
           ),
         ],

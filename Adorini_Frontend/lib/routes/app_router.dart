@@ -37,7 +37,8 @@ import 'app_shell.dart';
 /// during a login and never affect where the user should be routed.
 class AuthRouterRefresh extends ChangeNotifier {
   AuthRouterRefresh(Ref ref) {
-    ref.listen<AuthState>(authControllerProvider, (AuthState? previous, AuthState next) {
+    ref.listen<AuthState>(authControllerProvider,
+        (AuthState? previous, AuthState next) {
       if (previous?.status != next.status) {
         notifyListeners();
       }
@@ -81,7 +82,9 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
 
       final bool onOnboarding = state.matchedLocation == '/onboarding';
       if (authState.status == AuthStatus.unknown) return null;
-      if (!authState.isAuthenticated && !onOnboarding && !_isGuestBrowsable(state.matchedLocation)) {
+      if (!authState.isAuthenticated &&
+          !onOnboarding &&
+          !_isGuestBrowsable(state.matchedLocation)) {
         return '/onboarding';
       }
       if (authState.isAuthenticated && onOnboarding) return '/home';
@@ -90,27 +93,34 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
     routes: <RouteBase>[
       GoRoute(
         path: '/splash',
-        builder: (BuildContext context, GoRouterState state) => const SplashScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const SplashScreen(),
       ),
       GoRoute(
         path: '/onboarding',
-        builder: (BuildContext context, GoRouterState state) => const OnboardingScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const OnboardingScreen(),
       ),
       StatefulShellRoute.indexedStack(
-        builder: (BuildContext context, GoRouterState state, StatefulNavigationShell shell) {
+        builder: (BuildContext context, GoRouterState state,
+            StatefulNavigationShell shell) {
           return AppShell(navigationShell: shell);
         },
         branches: <StatefulShellBranch>[
           StatefulShellBranch(
             routes: <RouteBase>[
-              GoRoute(path: '/home', builder: (BuildContext c, GoRouterState s) => const HomeScreen()),
+              GoRoute(
+                  path: '/home',
+                  builder: (BuildContext c, GoRouterState s) =>
+                      const HomeScreen()),
             ],
           ),
           StatefulShellBranch(
             routes: <RouteBase>[
               GoRoute(
                 path: '/videos',
-                builder: (BuildContext c, GoRouterState s) => const VideoFeedScreen(),
+                builder: (BuildContext c, GoRouterState s) =>
+                    const VideoFeedScreen(),
               ),
             ],
           ),
@@ -118,7 +128,8 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: '/catalog',
-                builder: (BuildContext c, GoRouterState s) => const ProductListScreen(),
+                builder: (BuildContext c, GoRouterState s) =>
+                    const ProductListScreen(),
                 routes: <RouteBase>[
                   GoRoute(
                     path: 'product/:slug',
@@ -133,7 +144,8 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: '/wishlist',
-                builder: (BuildContext c, GoRouterState s) => const WishlistScreen(),
+                builder: (BuildContext c, GoRouterState s) =>
+                    const WishlistScreen(),
               ),
             ],
           ),
@@ -141,29 +153,35 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
             routes: <RouteBase>[
               GoRoute(
                 path: '/profile',
-                builder: (BuildContext c, GoRouterState s) => const ProfileScreen(),
+                builder: (BuildContext c, GoRouterState s) =>
+                    const ProfileScreen(),
                 routes: <RouteBase>[
                   GoRoute(
                     path: 'wallet',
-                    builder: (BuildContext c, GoRouterState s) => const WalletScreen(),
+                    builder: (BuildContext c, GoRouterState s) =>
+                        const WalletScreen(),
                   ),
                   GoRoute(
                     path: 'orders',
-                    builder: (BuildContext c, GoRouterState s) => const OrderHistoryScreen(),
+                    builder: (BuildContext c, GoRouterState s) =>
+                        const OrderHistoryScreen(),
                   ),
                   GoRoute(
                     path: 'orders/:orderId',
                     builder: (BuildContext c, GoRouterState s) =>
-                        OrderDetailScreen(orderId: s.pathParameters['orderId']!),
+                        OrderDetailScreen(
+                            orderId: s.pathParameters['orderId']!),
                   ),
                   GoRoute(
                     path: 'orders/:orderId/return',
                     builder: (BuildContext c, GoRouterState s) =>
-                        ReturnRequestScreen(orderId: s.pathParameters['orderId']!),
+                        ReturnRequestScreen(
+                            orderId: s.pathParameters['orderId']!),
                   ),
                   GoRoute(
                     path: 'returns',
-                    builder: (BuildContext c, GoRouterState s) => const ReturnsListScreen(),
+                    builder: (BuildContext c, GoRouterState s) =>
+                        const ReturnsListScreen(),
                   ),
                 ],
               ),
@@ -173,11 +191,13 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
       ),
       GoRoute(
         path: '/cart',
-        builder: (BuildContext context, GoRouterState state) => const CartScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const CartScreen(),
       ),
       GoRoute(
         path: '/checkout',
-        builder: (BuildContext context, GoRouterState state) => const CheckoutScreen(),
+        builder: (BuildContext context, GoRouterState state) =>
+            const CheckoutScreen(),
       ),
     ],
   );

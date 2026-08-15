@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../data/product_model.dart';
 import '../../domain/catalog_providers.dart';
@@ -34,8 +35,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
   /// Fetches the next cursor page once the grid is within ~2 rows of the end.
   void _onScroll() {
     if (!_scrollController.hasClients) return;
-    final double remaining =
-        _scrollController.position.maxScrollExtent - _scrollController.position.pixels;
+    final double remaining = _scrollController.position.maxScrollExtent -
+        _scrollController.position.pixels;
     if (remaining < 600) {
       ref.read(productListProvider.notifier).loadMore();
     }
@@ -43,7 +44,8 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final AsyncValue<List<ProductSummary>> products = ref.watch(productListProvider);
+    final AsyncValue<List<ProductSummary>> products =
+        ref.watch(productListProvider);
     final bool hasFilters = !ref.watch(catalogFiltersProvider).isEmpty;
 
     return Scaffold(
@@ -71,11 +73,14 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           return GridView.builder(
             controller: _scrollController,
             padding: const EdgeInsets.all(AppSpacing.containerMargin),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              mainAxisSpacing: AppSpacing.md,
-              crossAxisSpacing: AppSpacing.md,
-              childAspectRatio: 0.58,
+            // Measured, not guessed. `childAspectRatio` cannot work here: the
+            // image scales with the cell width while the caption is a fixed
+            // stack of text, so the ratio that fits one screen width overflows
+            // another. At 393pt the old 0.58 left 65.8pt for a caption needing
+            // 104pt — the 38px overflow.
+            gridDelegate: ProductCard.gridDelegate(
+              context,
+              viewportWidth: MediaQuery.sizeOf(context).width,
             ),
             itemCount: items.length,
             itemBuilder: (BuildContext context, int index) {
@@ -89,7 +94,7 @@ class _ProductListScreenState extends ConsumerState<ProductListScreen> {
           );
         },
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );

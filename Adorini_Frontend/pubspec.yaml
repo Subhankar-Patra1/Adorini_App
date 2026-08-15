@@ -19,8 +19,7 @@ dependencies:
   # Routing
   go_router: ^14.2.0
 
-  # Typography & icons
-  google_fonts: ^6.2.1
+  # Icons
   flutter_svg: ^2.0.10+1
 
   # Media
@@ -48,7 +47,21 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Outfit is loaded via google_fonts at runtime; no bundled font files needed.
+  # Sentient (headings) and Clash Grotesk (body/label — the lower levels) are
+  # not on Google Fonts, so both ship as bundled assets.
+  fonts:
+    - family: Sentient
+      fonts:
+        - asset: assets/fonts/Sentient-Medium.otf
+          weight: 500
+        - asset: assets/fonts/Sentient-Bold.otf
+          weight: 700
+    - family: ClashGrotesk
+      fonts:
+        - asset: assets/fonts/ClashGrotesk-Medium.otf
+          weight: 500
+        - asset: assets/fonts/ClashGrotesk-Bold.otf
+          weight: 700
 
   assets:
     - assets/images/

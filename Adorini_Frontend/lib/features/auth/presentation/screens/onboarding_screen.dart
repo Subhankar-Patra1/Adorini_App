@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -67,15 +67,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final String otp = _otpController.text.trim();
     if (otp.length != 6) return;
 
-    final bool success = await ref.read(authControllerProvider.notifier).verifyOtp(
-          phone: _phoneController.text.trim(),
-          otp: otp,
-          // Referrals attach only at account creation — the code must ride
-          // along with this request or it is lost for good.
-          referralCode: _referralController.text.trim().isEmpty
-              ? null
-              : _referralController.text.trim(),
-        );
+    final bool success =
+        await ref.read(authControllerProvider.notifier).verifyOtp(
+              phone: _phoneController.text.trim(),
+              otp: otp,
+              // Referrals attach only at account creation — the code must ride
+              // along with this request or it is lost for good.
+              referralCode: _referralController.text.trim().isEmpty
+                  ? null
+                  : _referralController.text.trim(),
+            );
     if (success && mounted) context.go('/home');
   }
 
@@ -105,8 +106,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // No Timer, no setState — `build` already re-runs as the inset changes.
     const double liftSaturatesAtInset = 170;
     const double maxLift = 100;
-    final double liftProgress = (keyboardInset / liftSaturatesAtInset).clamp(0.0, 1.0);
-    final double keyboardLift = maxLift * Curves.easeOutCubic.transform(liftProgress);
+    final double liftProgress =
+        (keyboardInset / liftSaturatesAtInset).clamp(0.0, 1.0);
+    final double keyboardLift =
+        maxLift * Curves.easeOutCubic.transform(liftProgress);
+    // Constant nudge off the bottom edge, on top of the keyboard-driven lift
+    // above. Deliberately small: this is reserved as padding, so every point
+    // here is a point the card cannot use, and the card is the thing that
+    // should be big.
+    const double restingLift = 12;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -123,7 +131,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 _TopBar(onSkip: () => context.go('/home')),
                 Expanded(
                   child: LayoutBuilder(
-                    builder: (BuildContext context, BoxConstraints constraints) {
+                    builder:
+                        (BuildContext context, BoxConstraints constraints) {
                       final bool compact = constraints.maxHeight < 760;
                       final Widget authCard = _AuthCard(
                         auth: auth,
@@ -137,16 +146,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           _otpSent = false;
                           _otpController.clear();
                         }),
-                        onRevealReferral: () => setState(() => _showReferralField = true),
+                        onRevealReferral: () =>
+                            setState(() => _showReferralField = true),
                         onGoogle: () => _showGoogleUnavailable(context),
-                        canContinue: _otpSent || _phoneController.text.trim().length == 10,
+                        canContinue: _otpSent ||
+                            _phoneController.text.trim().length == 10,
                       );
 
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: Column(
                           children: <Widget>[
-                            SizedBox(height: compact ? 4 : 12),
+                            SizedBox(height: compact ? 2 : 6),
                             const _Wordmark(),
                             Expanded(
                               // A plain Transform, NOT an AnimatedContainer.
@@ -160,27 +171,54 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                               // in late once the keyboard settles. That
                               // rubber-banding is the bounce — the animation
                               // was causing it, not smoothing it.
-                              child: Transform.translate(
-                                offset: Offset(0, -keyboardLift),
-                                child: FittedBox(
-                                  fit: BoxFit.scaleDown,
-                                  alignment: Alignment.bottomCenter,
-                                  child: SizedBox(
-                                    width: constraints.maxWidth - 36,
-                                    child: authCard,
+                              // The resting lift is padding, not a transform.
+                              // `Transform.translate` only moves paint, so a
+                              // 28pt lift drew the card over the slogan, which
+                              // has 14pt beneath it — the text was still laid
+                              // out, just hidden under the card. Reserving the
+                              // space instead shortens the box the group is
+                              // centred in, raising it by half the padding
+                              // without overlapping anything above.
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                    bottom: restingLift * 2),
+                                child: Transform.translate(
+                                  // Keyboard-driven lift only. This one must stay
+                                  // a transform: it changes every frame with the
+                                  // IME inset, and relayout at that rate is what
+                                  // made the card judder.
+                                  offset: Offset(0, -keyboardLift),
+                                  // Centred, not bottom-aligned, and carrying the
+                                  // trust row with it. Bottom-aligning pinned the
+                                  // card to the floor while the wordmark held the
+                                  // ceiling, so every spare pixel pooled into one
+                                  // dead band across the middle of the screen.
+                                  // Centring splits that slack above and below.
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.center,
+                                    child: SizedBox(
+                                      width: constraints.maxWidth - 24,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: <Widget>[
+                                          authCard,
+                                          const SizedBox(height: 14),
+                                          // Previously gated behind `!compact`,
+                                          // which silently dropped it on exactly
+                                          // the short screens whose empty middle
+                                          // it was best placed to fill. Inside
+                                          // the FittedBox it scales down instead
+                                          // of disappearing.
+                                          const _TrustBenefits(),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                            if (!compact) ...<Widget>[
-                              const SizedBox(height: 12),
-                              const _TrustBenefits(),
-                            ],
-                            if (kDebugMode && !compact) ...<Widget>[
-                              const SizedBox(height: 4),
-                              _DebugBypassButton(onDone: () => context.go('/home')),
-                            ],
-                            const SizedBox(height: 8),
+                            const SizedBox(height: 4),
                           ],
                         ),
                       );
@@ -207,10 +245,19 @@ class _FashionBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // WebP, not PNG: the same 941x1672 collage was a 2.04 MB PNG, which is
+    // ~11x the WebP at a PSNR of 40 dB — no visible difference, on the first
+    // screen of a cold start.
     return Image.asset(
-      'assets/images/onboarding_fashion_collage.png',
+      'assets/images/onboarding_fashion_collage.webp',
       fit: BoxFit.cover,
-      alignment: Alignment.topCenter,
+      // Shifted left. The collage is proportionally wider than the screen, so
+      // `cover` scales it to the height and crops the sides — moving the
+      // alignment toward the right edge pulls the visible content left,
+      // because it is the right of the source that is being brought into view.
+      // At this screen size the ~85pt of horizontal overflow makes x: 0.6
+      // worth roughly 25pt of travel; x: 1 would be the crop's hard limit.
+      alignment: const Alignment(0.6, -1),
     );
   }
 }
@@ -223,9 +270,13 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 8,
+      // Asymmetric on purpose: extra padding on the right pulls Skip inward,
+      // off the florals that the shifted backdrop brought into the corner.
+      padding: const EdgeInsets.only(
+        left: 14,
+        right: 32,
+        top: 8,
+        bottom: 8,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -243,7 +294,8 @@ class _TopBar extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.xs),
-                const Icon(Icons.arrow_forward, size: 20, color: Color(0xFF8C173A)),
+                const Icon(Icons.arrow_forward,
+                    size: 20, color: Color(0xFF8C173A)),
               ],
             ),
           ),
@@ -253,6 +305,21 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+/// The brand lockup: the emblem above the script wordmark.
+///
+/// Both are the real brand vectors rather than type set to look like them —
+/// the previous version drew a bare 'A' in the platform serif and letterspaced
+/// the name, which matched neither the emblem nor the script logotype.
+///
+/// The emblem comes from `assets/images/logo.svg`.
+///
+/// That file shipped with its artwork padded into a 3090x2160 frame — the ink
+/// filled only 39.6% of the height and sat high in it, so at any given height
+/// it drew a small mark with a large dead gap beneath. Its viewBox is now
+/// trimmed to the artwork's measured bounds (plus 3%), so the height set here
+/// is the height you actually see. Path data is untouched.
+///
+/// The source fill is irrelevant: `srcIn` replaces it with the brand ink.
 class _Wordmark extends StatelessWidget {
   const _Wordmark();
 
@@ -260,47 +327,83 @@ class _Wordmark extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: <Widget>[
-        const Text(
-          'A',
-          style: TextStyle(
-            fontFamily: 'serif',
-            fontSize: 76,
-            height: 0.78,
-            color: Color(0xFF9D1646),
-            fontWeight: FontWeight.w400,
+        Transform.translate(
+          offset: const Offset(4, 0),
+          child: SvgPicture.asset(
+            'assets/images/logo.svg',
+            height: 118,
+            // Tinted to the brand ink so the emblem and the wordmark below it
+            // sit at the same weight.
+            colorFilter:
+                const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
+            // The pair announces once, on the emblem. Labelling the wordmark
+            // too would read the brand name twice; unlabelled, it stays
+            // decorative.
+            semanticsLabel: 'Adorini',
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'ADORINI',
-          style: AppTypography.displayLg.copyWith(
-            fontSize: 36,
-            fontWeight: FontWeight.w400,
-            letterSpacing: 6,
-            color: const Color(0xFF2A1115),
+        const SizedBox(height: 2),
+        // Optically centred, not just geometrically. Both marks sit dead centre
+        // by bounding box, but their ink does not: the script's centre of mass
+        // is 1.8% right of its box (the trailing flourish and the flower over
+        // the 'ni'), while the emblem's is 0.9% left. Left unadjusted the two
+        // disagree by ~4px and the pair reads as off-axis. The emblem's own
+        // ~1px correction is below the perceptual threshold, so only the
+        // wordmark is nudged.
+        Transform.translate(
+          offset: const Offset(-4, 0),
+          child: SvgPicture.asset(
+            'assets/images/wordmark.svg',
+            // Trimmed from 104. Its ink fills only ~76% of the box, so it
+            // gives back real height for less apparent size loss than the
+            // emblem would — and the height freed here is what lets the card
+            // grow instead of being scaled back down by the FittedBox.
+            height: 92,
+            colorFilter:
+                const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
           ),
         ),
-        const SizedBox(height: 10),
-        Text(
-          'STYLE THAT SPEAKS YOU',
-          style: AppTypography.labelBold.copyWith(
-            fontSize: 11,
-            letterSpacing: 2.5,
-            color: const Color(0xFF8C173A),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(width: 42, height: 1, color: const Color(0xFF8C173A)),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 10),
-              child: Icon(Icons.local_florist, size: 15, color: Color(0xFF8C173A)),
+        // Deliberately generous space above and below. The slogan is the only
+        // thing standing between the lockup and the card, so letting it sit in
+        // that band — rather than tucked tight under the wordmark — is what
+        // makes the gap read as composition instead of leftover emptiness.
+        const SizedBox(height: 22),
+        // Broken by hand rather than left to wrap. The split falls after
+        // 'elegance' so both lines carry a complete phrase, and keeping it off
+        // one long line also keeps the ends clear of the garments that close
+        // in from both edges of the backdrop at this height.
+        //
+        // Curly quotes, not straight ones: a straight double quote is a typing
+        // convention, and next to a script logotype it reads as a mistake.
+        //
+        // Nudged right to sit on the same optical axis as the emblem above it.
+        Padding(
+          padding: const EdgeInsets.only(left: 34, right: 22),
+          child: Text(
+            '“Adore the elegance\nyou owe yourself”',
+            textAlign: TextAlign.center,
+            // Sentient Bold. Built from `titleMd` (Sentient Medium) with the
+            // weight overridden — safe here because Sentient is a bundled
+            // asset family with both cuts registered, so Flutter resolves
+            // w700 to the real Bold file. The same override on a google_fonts
+            // style would only fake it, since the family name there is baked
+            // per weight at call time.
+            style: AppTypography.titleMd.copyWith(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              // NOTE: only Sentient-Medium and Sentient-Bold are bundled —
+              // there is no italic cut. Flutter has no true italic to reach
+              // for, so this is a synthetic slant, not drawn italic glyphs.
+              // Adding Sentient-Italic to assets/fonts (and to the family in
+              // pubspec.yaml under `style: italic`) would make it real.
+              fontStyle: FontStyle.italic,
+              height: 1.5,
+              letterSpacing: 0.4,
+              color: const Color(0xFF8C173A),
             ),
-            Container(width: 42, height: 1, color: const Color(0xFF8C173A)),
-          ],
+          ),
         ),
+        const SizedBox(height: 22),
       ],
     );
   }
@@ -337,7 +440,7 @@ class _AuthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      padding: const EdgeInsets.fromLTRB(22, 26, 22, 24),
       decoration: BoxDecoration(
         color: const Color(0xFFFFFCFB).withValues(alpha: 0.97),
         borderRadius: BorderRadius.circular(28),
@@ -353,19 +456,21 @@ class _AuthCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Transform.translate(
-            offset: const Offset(0, -4),
-            child: Text(
-              otpSent ? 'Enter the code' : 'Welcome to Adorini',
-              textAlign: TextAlign.center,
-              style: AppTypography.titleMd.copyWith(
-                fontSize: 23,
-                fontWeight: FontWeight.w600,
-                color: const Color(0xFF211517),
-              ),
+          // 'Welcome to Adorini' repeated the brand name within ~150px of the
+          // script logotype directly above it. The greeting carries the warmth;
+          // the wordmark already carries the name. Neutral on purpose — one
+          // flow serves both sign-in and sign-up, so 'Welcome back' would be
+          // wrong for a new shopper.
+          Text(
+            otpSent ? 'Enter the code' : 'Welcome',
+            textAlign: TextAlign.center,
+            style: AppTypography.titleMd.copyWith(
+              fontSize: 28,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF211517),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           if (otpSent) ...<Widget>[
             Text(
               'We sent a 6-digit code to +91 ${phoneController.text.trim()}',
@@ -375,7 +480,7 @@ class _AuthCard extends StatelessWidget {
                 color: const Color(0xFF5D5352),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
           ],
 
           if (!otpSent)
@@ -414,7 +519,8 @@ class _AuthCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Icon(Icons.error_outline, size: 16, color: AppColors.error),
+                const Icon(Icons.error_outline,
+                    size: 16, color: AppColors.error),
                 const SizedBox(width: AppSpacing.xs),
                 Expanded(
                   child: Text(
@@ -427,17 +533,23 @@ class _AuthCard extends StatelessWidget {
             ),
           ],
 
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
           SizedBox(
-            height: 52,
+            height: 56,
             child: ElevatedButton(
-              onPressed: auth.isLoading || !canContinue ? null : () => onSubmit(),
+              onPressed:
+                  auth.isLoading || !canContinue ? null : () => onSubmit(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFA81746),
                 foregroundColor: Colors.white,
-                disabledBackgroundColor: const Color(0xFFA81746).withValues(alpha: 0.38),
-                disabledForegroundColor: Colors.white.withValues(alpha: 0.85),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                // A translucent wash of the brand maroon under white text sat
+                // near 1.9:1 — unreadable, and it still read as an enabled
+                // button, so it invited taps that do nothing. A neutral fill
+                // with dark text is unmistakably inert and stays legible.
+                disabledBackgroundColor: const Color(0xFFEFE7E3),
+                disabledForegroundColor: AppColors.onSurfaceVariant,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
                 elevation: 0,
               ),
               child: auth.isLoading
@@ -449,7 +561,7 @@ class _AuthCard extends StatelessWidget {
                       // spinner is all but invisible on it.
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                      color: Colors.white,
+                        color: Colors.white,
                       ),
                     )
                   : Text(otpSent ? 'VERIFY & CONTINUE' : 'CONTINUE'),
@@ -459,48 +571,89 @@ class _AuthCard extends StatelessWidget {
           if (!otpSent)
             Column(
               children: <Widget>[
-                  const SizedBox(height: 10),
-                  Row(
-                    children: <Widget>[
-                      const Expanded(child: Divider(color: Color(0xFFE6D9D8))),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('or continue with', style: AppTypography.bodyMd.copyWith(fontSize: 13)),
+                const SizedBox(height: 18),
+                Row(
+                  children: <Widget>[
+                    const Expanded(child: Divider(color: Color(0xFFE6D9D8))),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'or continue with',
+                        style: AppTypography.bodyMd.copyWith(
+                            fontSize: 13, color: AppColors.onSurfaceVariant),
                       ),
-                      const Expanded(child: Divider(color: Color(0xFFE6D9D8))),
+                    ),
+                    const Expanded(child: Divider(color: Color(0xFFE6D9D8))),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Styled as pending, not ready. The plugin and OAuth client
+                // are not configured, so `onGoogle` only explains that —
+                // presenting it identically to a working control was the
+                // same kind of promise the removed auth-bypass button made.
+                // It stays tappable so the tap is answered rather than
+                // swallowed by a dead button.
+                OutlinedButton(
+                  onPressed: onGoogle,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.onSurfaceVariant,
+                    side: const BorderSide(color: Color(0xFFEDE3E0)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      // Neutral rather than Google blue: the real mark is the
+                      // four-colour 'G', and a blue letter is both off-brand
+                      // and outside Google's identity guidelines.
+                      Text(
+                        'G',
+                        style: AppTypography.bodyMd.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Text('Continue with Google',
+                          style: AppTypography.bodyMd.copyWith(fontSize: 14)),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEFE7E3),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'SOON',
+                          style: AppTypography.labelBold.copyWith(
+                            fontSize: 9,
+                            letterSpacing: 0.8,
+                            color: AppColors.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: onGoogle,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.onSurface,
-                      side: const BorderSide(color: Color(0xFFE6D9D8)),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: <Widget>[
-                        const Text('G', style: TextStyle(fontSize: 21, fontWeight: FontWeight.w700, color: Color(0xFF4285F4))),
-                        const SizedBox(width: 12),
-                        Text('Continue with Google', style: AppTypography.bodyMd.copyWith(fontSize: 14, fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                  ),
+                ),
               ],
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
-              const Icon(Icons.verified_user_outlined, size: 20, color: Color(0xFFA81746)),
+              const Icon(Icons.verified_user_outlined,
+                  size: 18, color: Color(0xFFA81746)),
               const SizedBox(width: 8),
               Flexible(
                 child: Text(
                   'Your data is 100% secure with us',
                   textAlign: TextAlign.center,
-                  style: AppTypography.bodyMd.copyWith(fontSize: 13, color: AppColors.onSurfaceVariant),
+                  style: AppTypography.bodyMd.copyWith(
+                      fontSize: 13, color: AppColors.onSurfaceVariant),
                 ),
               ),
             ],
@@ -523,29 +676,41 @@ class _TrustBenefits extends StatelessWidget {
       (Icons.inventory_2_outlined, 'Easy Returns'),
     ];
 
-    return Row(
-      children: <Widget>[
-        for (int index = 0; index < benefits.length; index++) ...<Widget>[
-          if (index > 0) const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              children: <Widget>[
-                Icon(benefits[index].$1, color: accent, size: 24),
-                const SizedBox(height: 5),
-                Text(
-                  benefits[index].$2,
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.bodyMd.copyWith(fontSize: 11, color: const Color(0xFF3B282B)),
-                ),
-              ],
+    // Sits directly on the photographic collage, where garment detail runs
+    // right under the labels. Unbacked, 11px text over that is unreadable —
+    // this translucent surface lifts it off the imagery without competing
+    // with the solid card above.
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFCFB).withValues(alpha: 0.88),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: <Widget>[
+          for (int index = 0; index < benefits.length; index++) ...<Widget>[
+            if (index > 0) const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                children: <Widget>[
+                  Icon(benefits[index].$1, color: accent, size: 22),
+                  const SizedBox(height: 6),
+                  Text(
+                    benefits[index].$2,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.bodyMd
+                        .copyWith(fontSize: 11, color: const Color(0xFF3B282B)),
+                  ),
+                ],
+              ),
             ),
-          ),
-          if (index < benefits.length - 1)
-            Container(width: 1, height: 32, color: const Color(0xFFE2C9CF)),
+            if (index < benefits.length - 1)
+              Container(width: 1, height: 30, color: const Color(0xFFE2C9CF)),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -594,7 +759,8 @@ class _PhoneField extends StatelessWidget {
               inputFormatters: <TextInputFormatter>[
                 FilteringTextInputFormatter.digitsOnly,
               ],
-              style: AppTypography.bodyLg.copyWith(fontSize: 16, letterSpacing: 1.2),
+              style: AppTypography.bodyLg
+                  .copyWith(fontSize: 16, letterSpacing: 1.2),
               decoration: const InputDecoration(
                 hintText: 'Enter your mobile number',
                 hintStyle: TextStyle(
@@ -632,7 +798,9 @@ class _OtpField extends StatelessWidget {
       maxLength: 6,
       autofocus: true,
       textAlign: TextAlign.center,
-      inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.digitsOnly
+      ],
       style: AppTypography.displayLg.copyWith(
         fontSize: 26,
         letterSpacing: 12,
@@ -642,30 +810,6 @@ class _OtpField extends StatelessWidget {
         counterText: '',
         hintText: '······',
       ),
-    );
-  }
-}
-
-/// Debug-only. The token it stores is a placeholder string, so the backend's
-/// JwtAuthGuard rejects it and every authenticated call 401s — it only
-/// unlocks navigation for UI work. `kDebugMode` keeps it out of release
-/// builds, where a visible "bypass auth" control has no business being.
-class _DebugBypassButton extends ConsumerWidget {
-  const _DebugBypassButton({required this.onDone});
-
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return TextButton.icon(
-      onPressed: () async {
-        await ref.read(authControllerProvider.notifier).bypassAuthForTesting();
-        onDone();
-      },
-      icon: const Icon(Icons.flash_on, size: 16),
-      // Short on purpose: TextButton.icon lays its label out in an unbounded
-      // Row, so a longer string overflows on narrow screens.
-      label: const Text('SKIP — DEV MODE'),
     );
   }
 }

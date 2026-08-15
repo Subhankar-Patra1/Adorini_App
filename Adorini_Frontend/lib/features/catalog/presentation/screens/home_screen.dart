@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../cart/data/cart_api.dart';
@@ -16,7 +17,8 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<ProductSummary>> products = ref.watch(productListProvider);
+    final AsyncValue<List<ProductSummary>> products =
+        ref.watch(productListProvider);
     final AsyncValue<List<Category>> categories = ref.watch(categoriesProvider);
     final AsyncValue<CartView> cart = ref.watch(cartControllerProvider);
     final int cartCount = cart.valueOrNull?.itemCount ?? 0;
@@ -46,9 +48,11 @@ class HomeScreen extends ConsumerWidget {
                   height: 48,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.containerMargin),
                     itemCount: items.length,
-                    separatorBuilder: (BuildContext c, int i) => const SizedBox(width: AppSpacing.xs),
+                    separatorBuilder: (BuildContext c, int i) =>
+                        const SizedBox(width: AppSpacing.xs),
                     itemBuilder: (BuildContext context, int index) {
                       final Category category = items[index];
                       return ActionChip(
@@ -69,35 +73,40 @@ class HomeScreen extends ConsumerWidget {
             SliverPadding(
               padding: const EdgeInsets.all(AppSpacing.containerMargin),
               sliver: SliverToBoxAdapter(
-                child: Text('New Arrivals', style: AppTypography.headlineLgMobile),
+                child:
+                    Text('New Arrivals', style: AppTypography.headlineLgMobile),
               ),
             ),
             products.when(
               data: (List<ProductSummary> items) => SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.containerMargin),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.containerMargin),
                 sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: AppSpacing.md,
-                    crossAxisSpacing: AppSpacing.md,
-                    childAspectRatio: 0.58,
+                  // Measured from the card's own content. The previous
+                  // `childAspectRatio: 0.58` left the caption ~38pt short, so
+                  // product names were clipped mid-line.
+                  gridDelegate: ProductCard.gridDelegate(
+                    context,
+                    viewportWidth: MediaQuery.sizeOf(context).width,
                   ),
                   delegate: SliverChildBuilderDelegate(
                     (BuildContext context, int index) {
                       final ProductSummary product = items[index];
                       return ProductCard(
                         product: product,
-                        onTap: () => context.push('/catalog/product/${product.slug}'),
+                        onTap: () =>
+                            context.push('/catalog/product/${product.slug}'),
                       );
                     },
                     childCount: items.length,
                   ),
                 ),
               ),
-              error: (Object error, StackTrace stackTrace) => SliverToBoxAdapter(
+              error: (Object error, StackTrace stackTrace) =>
+                  SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(AppSpacing.containerMargin),
-                  child: Text('Failed to load: $error'),
+                  child: Text(friendlyErrorMessage(error)),
                 ),
               ),
               loading: () => const SliverToBoxAdapter(

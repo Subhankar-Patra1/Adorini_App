@@ -22,8 +22,8 @@ class WalletScreen extends ConsumerWidget {
     );
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Could not open WhatsApp')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open WhatsApp')));
       }
     }
   }
@@ -31,7 +31,8 @@ class WalletScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<WalletBalance> balance = ref.watch(walletBalanceProvider);
-    final AsyncValue<List<WalletEntry>> transactions = ref.watch(walletTransactionsProvider);
+    final AsyncValue<List<WalletEntry>> transactions =
+        ref.watch(walletTransactionsProvider);
     final AsyncValue<String> referralCode = ref.watch(referralCodeProvider);
 
     return Scaffold(
@@ -48,7 +49,8 @@ class WalletScreen extends ConsumerWidget {
                   children: <Widget>[
                     Text('Store credit', style: AppTypography.labelBold),
                     const SizedBox(height: AppSpacing.xs),
-                    Text(data.balancePaise.asRupees, style: AppTypography.displayLg),
+                    Text(data.balancePaise.asRupees,
+                        style: AppTypography.displayLg),
                     // Shown apart from the spendable balance so a pending
                     // referral reward never looks like money available today.
                     if (data.pendingReferralCreditPaise > 0) ...<Widget>[
@@ -64,10 +66,10 @@ class WalletScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            error: (Object e, StackTrace s) => Text('Could not load balance: $e'),
+            error: (Object e, StackTrace s) =>
+                Text('Could not load balance: $e'),
             loading: () => const Center(child: CircularProgressIndicator()),
           ),
-
           const SizedBox(height: AppSpacing.md),
           referralCode.when(
             data: (String code) => Card(
@@ -97,7 +99,8 @@ class WalletScreen extends ConsumerWidget {
                       'Your friend enters this when they sign up. Codes only apply '
                       'to new accounts, and the reward lands once their first order '
                       'is delivered.',
-                      style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+                      style: AppTypography.bodyMd
+                          .copyWith(color: AppColors.onSurfaceVariant),
                     ),
                     const SizedBox(height: AppSpacing.sm),
                     ElevatedButton(
@@ -111,7 +114,6 @@ class WalletScreen extends ConsumerWidget {
             error: (Object e, StackTrace s) => const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
           ),
-
           const SizedBox(height: AppSpacing.xl),
           Text('Statement', style: AppTypography.titleMd),
           const SizedBox(height: AppSpacing.xs),
@@ -128,11 +130,11 @@ class WalletScreen extends ConsumerWidget {
                     .map((WalletEntry tx) => ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(tx.description ?? tx.type.label),
-                          subtitle: Text(DateFormat.yMMMd().format(tx.createdAt)),
+                          subtitle:
+                              Text(DateFormat.yMMMd().format(tx.createdAt)),
                           trailing: Text(
                             tx.amountPaise.asSignedRupees,
-                            style: AppTypography.bodyMd.copyWith(
-                              fontWeight: FontWeight.bold,
+                            style: AppTypography.bodyMdBold.copyWith(
                               color: tx.isCredit
                                   ? AppColors.primary
                                   : Theme.of(context).colorScheme.error,
@@ -142,7 +144,8 @@ class WalletScreen extends ConsumerWidget {
                     .toList(),
               );
             },
-            error: (Object e, StackTrace s) => Text('Could not load statement: $e'),
+            error: (Object e, StackTrace s) =>
+                Text('Could not load statement: $e'),
             loading: () => const Center(child: CircularProgressIndicator()),
           ),
           const SizedBox(height: AppSpacing.xl),

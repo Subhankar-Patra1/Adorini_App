@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../../core/network/api_error.dart';
 import '../../../../../core/theme/app_colors.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/theme/app_typography.dart';
@@ -13,19 +14,22 @@ class ReturnsListScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<ReturnRequest>> returns = ref.watch(myReturnsProvider);
+    final AsyncValue<List<ReturnRequest>> returns =
+        ref.watch(myReturnsProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Returns')),
       body: returns.when(
         data: (List<ReturnRequest> items) {
           if (items.isEmpty) {
-            return const Center(child: Text('You haven’t requested any returns.'));
+            return const Center(
+                child: Text('You haven’t requested any returns.'));
           }
           return ListView.separated(
             padding: const EdgeInsets.all(AppSpacing.containerMargin),
             itemCount: items.length,
-            separatorBuilder: (BuildContext c, int i) => const SizedBox(height: AppSpacing.sm),
+            separatorBuilder: (BuildContext c, int i) =>
+                const SizedBox(height: AppSpacing.sm),
             itemBuilder: (BuildContext context, int index) {
               final ReturnRequest request = items[index];
               return Card(
@@ -60,7 +64,7 @@ class ReturnsListScreen extends ConsumerWidget {
           );
         },
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load returns: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );

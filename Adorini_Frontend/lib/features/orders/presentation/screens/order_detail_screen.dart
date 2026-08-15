@@ -22,14 +22,15 @@ class OrderDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<OrderDetail> order = ref.watch(orderDetailProvider(orderId));
+    final AsyncValue<OrderDetail> order =
+        ref.watch(orderDetailProvider(orderId));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Order')),
       body: order.when(
         data: (OrderDetail detail) => _Body(detail: detail),
         error: (Object error, StackTrace stackTrace) =>
-            Center(child: Text('Failed to load order: $error')),
+            Center(child: Text(friendlyErrorMessage(error))),
         loading: () => const Center(child: CircularProgressIndicator()),
       ),
     );
@@ -47,7 +48,8 @@ class _Body extends ConsumerWidget {
       ref.invalidate(orderDetailProvider(detail.id));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('We’ve asked the courier to try again.')),
+          const SnackBar(
+              content: Text('We’ve asked the courier to try again.')),
         );
       }
     } on DioException catch (e) {
@@ -100,11 +102,13 @@ class _Body extends ConsumerWidget {
         Text(detail.orderNumber, style: AppTypography.headlineLgMobile),
         Text(
           'Placed ${DateFormat.yMMMd().format(detail.createdAt)}',
-          style: AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
+          style:
+              AppTypography.bodyMd.copyWith(color: AppColors.onSurfaceVariant),
         ),
         if (detail.delhiveryWaybill != null) ...<Widget>[
           const SizedBox(height: AppSpacing.xs),
-          Text('Waybill ${detail.delhiveryWaybill}', style: AppTypography.bodyMd),
+          Text('Waybill ${detail.delhiveryWaybill}',
+              style: AppTypography.bodyMd),
         ],
 
         // "Still want this?" — only while the window is open and the courier
@@ -118,7 +122,8 @@ class _Body extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text('Delivery didn’t go through', style: AppTypography.titleMd),
+                  Text('Delivery didn’t go through',
+                      style: AppTypography.titleMd),
                   const SizedBox(height: AppSpacing.xs),
                   Text(
                     detail.respondBy == null
@@ -147,7 +152,9 @@ class _Body extends ConsumerWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(
               step.done ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: step.done ? Theme.of(context).colorScheme.primary : AppColors.outline,
+              color: step.done
+                  ? Theme.of(context).colorScheme.primary
+                  : AppColors.outline,
             ),
             title: Text(step.label),
             subtitle: step.at == null
@@ -158,7 +165,8 @@ class _Body extends ConsumerWidget {
 
         if (detail.cancellationReason != null) ...<Widget>[
           const SizedBox(height: AppSpacing.sm),
-          Text('Reason: ${detail.cancellationReason}', style: AppTypography.bodyMd),
+          Text('Reason: ${detail.cancellationReason}',
+              style: AppTypography.bodyMd),
         ],
 
         const SizedBox(height: AppSpacing.lg),
@@ -168,8 +176,10 @@ class _Body extends ConsumerWidget {
           (OrderLine line) => ListTile(
             contentPadding: EdgeInsets.zero,
             title: Text(line.productName, style: AppTypography.bodyMd),
-            subtitle: Text('Size ${line.nominalSize} • ${line.colour} • Qty ${line.quantity}'),
-            trailing: Text(line.lineTotalPaise.asRupees, style: AppTypography.bodyMd),
+            subtitle: Text(
+                'Size ${line.nominalSize} • ${line.colour} • Qty ${line.quantity}'),
+            trailing:
+                Text(line.lineTotalPaise.asRupees, style: AppTypography.bodyMd),
           ),
         ),
 
@@ -177,7 +187,10 @@ class _Body extends ConsumerWidget {
         _Row(label: 'Subtotal', valuePaise: detail.subtotalPaise),
         if (detail.discountPaise > 0)
           _Row(label: 'Discount', valuePaise: -detail.discountPaise),
-        _Row(label: 'Delivery', valuePaise: detail.deliveryFeePaise, freeWhenZero: true),
+        _Row(
+            label: 'Delivery',
+            valuePaise: detail.deliveryFeePaise,
+            freeWhenZero: true),
         if (detail.walletCreditPaise > 0)
           _Row(label: 'Wallet credit', valuePaise: -detail.walletCreditPaise),
         const Divider(),
@@ -199,7 +212,8 @@ class _Body extends ConsumerWidget {
         // Returns open only once the parcel has actually been delivered.
         if (detail.status == OrderStatus.delivered)
           OutlinedButton(
-            onPressed: () => context.push('/profile/orders/${detail.id}/return'),
+            onPressed: () =>
+                context.push('/profile/orders/${detail.id}/return'),
             child: const Text('RETURN AN ITEM'),
           ),
         if (detail.canCancel) ...<Widget>[
@@ -216,7 +230,10 @@ class _Body extends ConsumerWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.valuePaise, this.freeWhenZero = false});
+  const _Row(
+      {required this.label,
+      required this.valuePaise,
+      this.freeWhenZero = false});
 
   final String label;
   final int valuePaise;
@@ -233,7 +250,9 @@ class _Row extends StatelessWidget {
           Text(
             freeWhenZero && valuePaise == 0
                 ? 'FREE'
-                : (valuePaise < 0 ? '- ${(-valuePaise).asRupees}' : valuePaise.asRupees),
+                : (valuePaise < 0
+                    ? '- ${(-valuePaise).asRupees}'
+                    : valuePaise.asRupees),
             style: AppTypography.bodyMd,
           ),
         ],

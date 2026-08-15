@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/utils/money.dart';
@@ -31,7 +32,8 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> {
         data: (List<VideoFeedItem> videos) {
           if (videos.isEmpty) {
             return const Center(
-              child: Text('No reels yet.', style: TextStyle(color: Colors.white)),
+              child:
+                  Text('No reels yet.', style: TextStyle(color: Colors.white)),
             );
           }
           return PageView.builder(
@@ -54,7 +56,7 @@ class _VideoFeedScreenState extends ConsumerState<VideoFeedScreen> {
         },
         error: (Object error, StackTrace stackTrace) => Center(
           child: Text(
-            'Failed to load reels: $error',
+            friendlyErrorMessage(error),
             style: const TextStyle(color: Colors.white),
           ),
         ),
@@ -180,7 +182,8 @@ class _ReelState extends State<_Reel> {
         // The thumbnail holds the frame until the video is ready, so scrolling
         // never lands on a black rectangle.
         if (widget.video.thumbnailUrl != null)
-          CachedNetworkImage(imageUrl: widget.video.thumbnailUrl!, fit: BoxFit.cover),
+          CachedNetworkImage(
+              imageUrl: widget.video.thumbnailUrl!, fit: BoxFit.cover),
         if (ready) Chewie(controller: _chewieController!),
         if (!ready) const Center(child: CircularProgressIndicator()),
         Positioned(
