@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Reads the backend address from Adorini_Frontend/env/local.json, which is
+      // gitignored — copy env/local.example.json to env/local.json once and set
+      // API_BASE_URL to whatever your device can reach this machine on.
+      "name": "Adorini (local env)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/Adorini_Frontend",
+      "program": "lib/main.dart",
+      "args": ["--dart-define-from-file", "env/local.json"]
+    },
+    {
+      // No env file needed: falls back to the platform defaults baked into
+      // ApiConstants.baseUrl (10.0.2.2 on Android, localhost elsewhere).
+      "name": "Adorini (platform defaults)",
+      "request": "launch",
+      "type": "dart",
+      "cwd": "${workspaceFolder}/Adorini_Frontend",
+      "program": "lib/main.dart"
+    }
+  ]
+}

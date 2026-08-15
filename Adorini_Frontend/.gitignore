@@ -46,3 +46,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Per-developer dart-define values (backend address differs on every machine
+# and device). env/local.example.json is the tracked template.
+/env/local.json

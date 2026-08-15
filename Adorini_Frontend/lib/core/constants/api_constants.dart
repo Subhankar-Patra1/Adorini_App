@@ -4,11 +4,18 @@ import 'package:flutter/foundation.dart';
 class ApiConstants {
   const ApiConstants._();
 
+  /// The backend address differs per machine and per device, so it is a
+  /// dart-define rather than a tracked constant. Supply it with
+  /// `--dart-define-from-file=env/local.json` (gitignored; copy
+  /// `env/local.example.json` to create it) so nobody has to edit a committed
+  /// file and fight merge conflicts over it.
+  ///
+  /// With no define, the platform defaults below cover the two loopback cases;
+  /// a physical device always needs the LAN IP in `env/local.json`.
   static String get baseUrl {
     const String envUrl = String.fromEnvironment('API_BASE_URL');
     if (envUrl.isNotEmpty) return envUrl;
-    
-    // Auto-detect based on platform
+
     if (!kIsWeb && Platform.isAndroid) {
       return 'http://10.0.2.2:3000/api';
     }

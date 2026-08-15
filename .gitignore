@@ -1,7 +1,14 @@
 # OS / Editor junk
 .DS_Store
 Thumbs.db
-.vscode/
+# `.vscode/*` rather than `.vscode/`: git will not descend into an
+# ignored *directory*, so the negation below only takes effect if the
+# directory itself stays un-ignored and its contents are excluded instead.
+.vscode/*
+# launch.json is shared on purpose — every developer needs the run configs, and
+# it holds no machine-specific values (the backend address it reads lives in
+# the gitignored Adorini_Frontend/env/local.json).
+!.vscode/launch.json
 .idea/
 
 # Environment and secrets

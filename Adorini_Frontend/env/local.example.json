@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to env/local.json and set API_BASE_URL to whatever address YOUR device can reach the backend on. local.json is gitignored, so everyone keeps their own and nobody has to edit tracked files.",
+  "_android_emulator": "http://10.0.2.2:3000/api",
+  "_ios_simulator_or_web": "http://localhost:3000/api",
+  "_physical_device": "http://<your-pc-lan-ip>:3000/api  (ipconfig -> IPv4 of Wi-Fi)",
+
+  "API_BASE_URL": "http://10.0.2.2:3000/api"
+}
