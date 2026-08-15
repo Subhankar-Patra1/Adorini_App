@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon, used from Android 8 onward. The launcher masks the layers to
+  whatever shape the device theme uses — circle, squircle, rounded square — so
+  the artwork must not carry its own background or its own corners.
+
+  That is why the foreground PNG is transparent and inset: it holds the emblem
+  at ~60% of the canvas, inside the 66% safe zone every mask is guaranteed to
+  leave visible. The cream comes from the background layer below, which the
+  mask can crop freely because it is a flat colour.
+
+  The legacy square PNGs in mipmap-*/ic_launcher.png stay for Android 7 and
+  earlier, which have no adaptive icon support.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground"/>
+</adaptive-icon>

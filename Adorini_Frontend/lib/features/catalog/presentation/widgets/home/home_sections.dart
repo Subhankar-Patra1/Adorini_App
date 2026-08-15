@@ -30,8 +30,7 @@ class CategoryRail extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final AsyncValue<List<Category>> categories =
-        ref.watch(categoriesProvider);
+    final AsyncValue<List<Category>> categories = ref.watch(categoriesProvider);
 
     return categories.when(
       loading: () => const SizedBox(
@@ -182,14 +181,177 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
-/// The reassurance strip — the promises a first-time shopper checks for before
+/// The reassurance block — the promises a first-time shopper checks for before
 /// they will put anything in a bag.
+///
+/// Led by custom sizing, which is the differentiator rather than a hygiene
+/// factor: returns, COD and secure payment are what every store offers and
+/// their job is only to remove doubt, whereas "we will make it in your size"
+/// is a reason to choose Adorini over the next tab. Levelling it into the
+/// four-up row would have buried the one claim worth reading.
 ///
 /// Every claim here is one the app actually implements: returns has a whole
 /// feature module, COD is a checkout path with its own verification screen,
-/// and the wallet is a real ledger. Nothing on this strip is aspirational.
+/// and the size request is a real endpoint writing a real `size_enquiries`
+/// row. Nothing in this block is aspirational.
 class TrustStrip extends StatelessWidget {
   const TrustStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: <Widget>[
+        _CustomSizingCard(),
+        _PromiseRow(),
+      ],
+    );
+  }
+}
+
+/// The custom-size order path, given its own card.
+///
+/// Copy deliberately carries no size numbers. The stocked band is per-category
+/// now — blouses run 32–36 where kurtis run 40–48 — so a headline quoting one
+/// range would be wrong on half the catalog the moment it shipped.
+///
+/// It also does not promise a price or a turnaround. The flow it points at
+/// records a request and has the team make contact; saying anything firmer
+/// here would be the app committing on the team's behalf.
+class _CustomSizingCard extends StatelessWidget {
+  const _CustomSizingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.containerMargin,
+        AppSpacing.md,
+        AppSpacing.containerMargin,
+        AppSpacing.sm,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            AppColors.primaryContainer,
+            AppColors.tertiaryContainer,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.surfaceContainerLowest,
+                ),
+                child: const Icon(
+                  Icons.straighten,
+                  size: 22,
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'CUSTOM SIZE ORDERS',
+                      style: AppTypography.labelBold.copyWith(
+                        fontSize: 10,
+                        letterSpacing: 1.4,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Not your size? We’ll make it.',
+                      style: AppTypography.titleMd.copyWith(
+                        fontSize: 18,
+                        color: AppColors.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          // Outside the icon's row on purpose, so the paragraph and the CTA
+          // both start at the card's left edge rather than indenting to clear
+          // the medallion. Only the eyebrow and the headline sit beside the
+          // icon — they are what it labels; the body is not.
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Every product page takes a size request. Tell us the size '
+            'you need and our team gets in touch to arrange it.',
+            style: AppTypography.bodyMd.copyWith(
+              fontSize: 12.5,
+              height: 1.45,
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
+          const _CustomSizingCta(),
+        ],
+      ),
+    );
+  }
+}
+
+/// The card's call to action, on its own full-width row.
+///
+/// Deliberately *not* inside the row that carries the icon: sharing that row
+/// left it about 307pt, and the label truncated to "make it your o…". Below the
+/// text block it gets the card's whole width, which fits the line with room to
+/// spare and reads as a footer to the message rather than a fragment of it.
+class _CustomSizingCta extends StatelessWidget {
+  const _CustomSizingCta();
+
+  @override
+  Widget build(BuildContext context) {
+    // Routes to the catalog rather than opening the request sheet: an enquiry
+    // is recorded against a product, so there is nothing to submit until one
+    // has been chosen. Sending the shopper to pick a garment is the honest
+    // first step, not a detour.
+    return GestureDetector(
+      onTap: () => context.go('/catalog'),
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.sm),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                'Explore products and make it your own',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.bodyMdBold.copyWith(
+                  fontSize: 13,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.arrow_forward, size: 16, color: AppColors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PromiseRow extends StatelessWidget {
+  const _PromiseRow();
 
   @override
   Widget build(BuildContext context) {
@@ -201,9 +363,10 @@ class TrustStrip extends StatelessWidget {
     ];
 
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.containerMargin,
-        vertical: AppSpacing.md,
+      margin: const EdgeInsets.only(
+        left: AppSpacing.containerMargin,
+        right: AppSpacing.containerMargin,
+        bottom: AppSpacing.md,
       ),
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
       decoration: BoxDecoration(
@@ -329,8 +492,8 @@ class _ReelTile extends StatelessWidget {
               ),
             ),
             const Center(
-              child: Icon(Icons.play_circle_fill,
-                  size: 34, color: Colors.white70),
+              child:
+                  Icon(Icons.play_circle_fill, size: 34, color: Colors.white70),
             ),
             if (item.taggedProducts.isNotEmpty)
               Positioned(

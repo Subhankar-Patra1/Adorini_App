@@ -14,7 +14,25 @@ import { FabricType, PrintTechnique } from '../../common/enums/domain.enums';
  * that can only be run once is a seed nobody runs.
  */
 
-const CATEGORIES = [
+/**
+ * The band a category is stocked in unless it says otherwise. Applied
+ * explicitly to every row below rather than left to the column default,
+ * because `upsert` spreads each object into one multi-row statement — a
+ * category omitting the key would contribute `undefined` to that statement
+ * instead of falling through to the default.
+ */
+const DEFAULT_SIZE_BAND = [40, 42, 44, 46, 48];
+
+interface CategorySeed {
+  slug: string;
+  name: string;
+  displayOrder: number;
+  description: string;
+  /** Omit to take [DEFAULT_SIZE_BAND]. */
+  sizes?: number[];
+}
+
+const CATEGORIES: CategorySeed[] = [
   {
     slug: 'kurtis',
     name: 'Kurtis',
@@ -38,6 +56,10 @@ const CATEGORIES = [
     name: 'Blouses',
     displayOrder: 4,
     description: 'Saree blouses, stitched and ready to wear.',
+    // The one category that departs from the 40–48 garment band. Blouse sizing
+    // is the bust measurement of the blouse itself rather than the wearer's
+    // outer garment size, so the numbers sit a full band lower.
+    sizes: [32, 34, 36],
   },
   {
     slug: 'petticoats',
@@ -160,7 +182,7 @@ const PRODUCTS = [
 async function seedCategories(ds: DataSource): Promise<Map<string, string>> {
   const repo = ds.getRepository(Category);
   await repo.upsert(
-    CATEGORIES.map((c) => ({ ...c, isActive: true })),
+    CATEGORIES.map((c) => ({ ...c, sizes: c.sizes ?? DEFAULT_SIZE_BAND, isActive: true })),
     ['slug'],
   );
 

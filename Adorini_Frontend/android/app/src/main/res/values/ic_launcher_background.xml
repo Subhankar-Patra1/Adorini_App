@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The brand cream, matching AppColors.surface. Kept as a colour resource rather
+  than baked into the foreground PNG because the adaptive-icon background layer
+  is what the launcher's mask crops — a flat colour survives any mask shape,
+  where a bitmap background would have its corners cut at a different radius on
+  every device.
+-->
+<resources>
+    <color name="ic_launcher_background">#FFF8F5</color>
+</resources>
