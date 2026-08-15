@@ -52,6 +52,19 @@ final Provider<AuthRouterRefresh> _authRouterRefreshProvider =
   return refresh;
 });
 
+/// Routes a signed-out shopper may reach via "Browse".
+///
+/// These mirror what the backend itself leaves open: catalog, PDP and the
+/// video feed are all `@Public()` there, so gating them in the client only
+/// loses browsers who have not decided to buy yet. Everything tied to a
+/// person — cart, checkout, orders, wallet, wishlist, profile — stays behind
+/// the redirect, and tapping one of those simply returns the shopper here to
+/// sign in.
+bool _isGuestBrowsable(String location) {
+  const List<String> browsable = <String>['/home', '/catalog', '/videos'];
+  return browsable.any(location.startsWith);
+}
+
 final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
   // Identity-stable: this provider never rebuilds, so neither does the router.
   final AuthRouterRefresh refresh = ref.watch(_authRouterRefreshProvider);
@@ -68,7 +81,9 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
 
       final bool onOnboarding = state.matchedLocation == '/onboarding';
       if (authState.status == AuthStatus.unknown) return null;
-      if (!authState.isAuthenticated && !onOnboarding) return '/onboarding';
+      if (!authState.isAuthenticated && !onOnboarding && !_isGuestBrowsable(state.matchedLocation)) {
+        return '/onboarding';
+      }
       if (authState.isAuthenticated && onOnboarding) return '/home';
       return null;
     },

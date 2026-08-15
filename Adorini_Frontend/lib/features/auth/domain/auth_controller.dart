@@ -95,6 +95,33 @@ class AuthController extends Notifier<AuthState> {
     }
   }
 
+  /// Debug-only shortcut past the OTP flow, for UI work while MSG91 has no
+  /// live credentials and no code can actually be delivered.
+  ///
+  /// The token stored here is a placeholder string, not a real JWT — the
+  /// backend's `JwtAuthGuard` rejects it, so every authenticated request will
+  /// 401. It unlocks *navigation* only; anything that talks to the server
+  /// still fails, by design. The caller is `kDebugMode`-gated so this cannot
+  /// reach a release build.
+  Future<void> bypassAuthForTesting() async {
+    await _tokenStorage.saveTokens(
+      accessToken: 'test_dev_bypass_token',
+      refreshToken: 'test_dev_bypass_refresh_token',
+    );
+    state = state.copyWith(
+      status: AuthStatus.authenticated,
+      isLoading: false,
+      user: const PublicUser(
+        id: 'test-user-id',
+        phone: '919876543210',
+        fullName: 'Adorini Guest (Dev)',
+        gender: 'FEMALE',
+        isPhoneVerified: true,
+        hasGoogleLinked: false,
+      ),
+    );
+  }
+
   Future<void> logout() async {
     final String? refreshToken = await _tokenStorage.readRefreshToken();
     if (refreshToken != null) {

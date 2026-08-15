@@ -75,7 +75,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 ),
               ),
             ),
-            // Centered Animated Logo
+            // Centered Animated Wordmark
             Center(
               child: FadeTransition(
                 opacity: _fadeAnimation,
@@ -87,13 +87,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       maxHeight: 310.0,
                     ),
                     child: AspectRatio(
-                      aspectRatio: 1088.0 / 500.0,
+                      aspectRatio: 820.0 / 400.0,
                       child: AdoriniAnimatedLogo(
                         duration: const Duration(milliseconds: 3200),
                         color: Colors.white,
                         strokeWidth: 1.5,
                         onAnimationComplete: () {
-                          // Allow a brief moment to admire the complete logo
+                          // Allow a brief moment to admire the complete wordmark
                           Future<void>.delayed(
                             const Duration(milliseconds: 400),
                             _proceedToApp,

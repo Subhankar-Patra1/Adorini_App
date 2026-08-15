@@ -125,10 +125,11 @@ class _AdoriniLogoPainter extends CustomPainter {
   final Color color;
   final double strokeWidth;
 
-  // Constants matching the SVG specification:
-  // ViewBox: 1088 x 500
-  static const double _viewBoxWidth = 1088.0;
-  static const double _viewBoxHeight = 500.0;
+  // Tight bounding box of the wordmark inside 1088x500 (143 to 943 x, 61 to 441 y)
+  static const double _cropLeft = 135.0;
+  static const double _cropTop = 50.0;
+  static const double _cropWidth = 820.0;
+  static const double _cropHeight = 400.0;
 
   // Sequence timings:
   // Delay per sequence index = order * 0.35s
@@ -147,16 +148,17 @@ class _AdoriniLogoPainter extends CustomPainter {
     if (size.width <= 0 || size.height <= 0) return;
 
     final double scale = math.min(
-      size.width / _viewBoxWidth,
-      size.height / _viewBoxHeight,
+      size.width / _cropWidth,
+      size.height / _cropHeight,
     );
 
-    final double offsetX = (size.width - _viewBoxWidth * scale) / 2.0;
-    final double offsetY = (size.height - _viewBoxHeight * scale) / 2.0;
+    final double offsetX = (size.width - _cropWidth * scale) / 2.0;
+    final double offsetY = (size.height - _cropHeight * scale) / 2.0;
 
     canvas.save();
     canvas.translate(offsetX, offsetY);
     canvas.scale(scale, scale);
+    canvas.translate(-_cropLeft, -_cropTop);
 
     final double currentTimeSec = animationProgress * _totalDurationSec;
 
