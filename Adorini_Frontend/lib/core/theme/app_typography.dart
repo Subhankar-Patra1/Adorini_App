@@ -106,10 +106,25 @@ class AppTypography {
     letterSpacing: 0.7,
   );
 
+  /// Prices, everywhere they appear.
+  ///
+  /// Clash Grotesk Bold, set smaller than the rest of the scale. The weight is
+  /// what makes a price read as a price at a glance down a grid; the size is
+  /// what stops it shouting over the product name beside it. Dropping the
+  /// weight instead made prices recede into the caption, so only the size came
+  /// down.
+  ///
+  /// w700 is a bundled cut, not a synthesised one — Clash Grotesk ships Medium
+  /// (500) and Bold (700) here, and anything between them snaps to one or the
+  /// other.
+  ///
+  /// `height` is in points, not a multiplier; the helper divides it by
+  /// `fontSize`. Kept at ~1.28 so the line box shrinks with the type rather
+  /// than leaving the old 22pt leading around 18pt text.
   static final TextStyle priceDisplay = _clashGrotesk(
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: FontWeight.w700,
-    height: 28,
+    height: 20,
   );
 
   /// Clash Grotesk Medium, for a [TextTheme] slot the scale does not name.

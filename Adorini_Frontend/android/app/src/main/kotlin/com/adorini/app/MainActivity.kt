@@ -1,4 +1,4 @@
-package com.example.adorini_frontend
+package com.adorini.app
 
 import io.flutter.embedding.android.FlutterActivity
 
