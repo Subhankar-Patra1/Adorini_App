@@ -1,4 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/constants/api_constants.dart';
 import '../../auth/data/auth_api.dart';
@@ -25,13 +28,33 @@ class AccountApi {
     String? gender,
     bool clearEmail = false,
   }) async {
-    final Response<Map<String, dynamic>> response = await _dio.patch<Map<String, dynamic>>(
+    final Response<Map<String, dynamic>> response =
+        await _dio.patch<Map<String, dynamic>>(
       ApiConstants.me,
       data: <String, dynamic>{
         if (fullName != null) 'fullName': fullName,
         if (clearEmail) 'email': null else if (email != null) 'email': email,
         if (gender != null) 'gender': gender,
       },
+    );
+    return PublicUser.fromJson(response.data!);
+  }
+
+  Future<PublicUser> uploadAvatar({
+    required Uint8List bytes,
+    required String filename,
+    required String mimeType,
+  }) async {
+    final Response<Map<String, dynamic>> response =
+        await _dio.post<Map<String, dynamic>>(
+      ApiConstants.avatar,
+      data: FormData.fromMap(<String, dynamic>{
+        'avatar': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
+          contentType: MediaType.parse(mimeType),
+        ),
+      }),
     );
     return PublicUser.fromJson(response.data!);
   }

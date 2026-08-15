@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Adorini uses the camera when you choose to take a new profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Adorini accesses your photos when you choose a profile picture from your gallery.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

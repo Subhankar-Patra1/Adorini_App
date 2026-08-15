@@ -41,6 +41,7 @@ class ProfileScreen extends ConsumerWidget {
           _AccountHeader(profile: profile),
           const SizedBox(height: AppSpacing.lg),
           _QuickActions(
+            onEditProfile: () => context.push('/profile/edit'),
             onUnavailable: (String label) => _showComingSoon(context, label),
           ),
           const SizedBox(height: AppSpacing.md),
@@ -199,8 +200,12 @@ class _AccountHeader extends StatelessWidget {
 }
 
 class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.onUnavailable});
+  const _QuickActions({
+    required this.onEditProfile,
+    required this.onUnavailable,
+  });
 
+  final VoidCallback onEditProfile;
   final ValueChanged<String> onUnavailable;
 
   @override
@@ -225,8 +230,11 @@ class _QuickActions extends StatelessWidget {
                 child: _QuickAction(
                   icon: action.icon,
                   label: action.label,
-                  onTap: () =>
-                      onUnavailable(action.label.replaceAll('\n', ' ')),
+                  onTap: action == actions.first
+                      ? onEditProfile
+                      : () => onUnavailable(
+                            action.label.replaceAll('\n', ' '),
+                          ),
                 ),
               ),
             ),

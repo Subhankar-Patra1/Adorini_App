@@ -19,6 +19,7 @@ import '../features/orders/presentation/screens/returns/returns_list_screen.dart
 import '../features/orders/presentation/screens/returns/return_request_screen.dart';
 import '../features/growth/presentation/screens/wallet_screen.dart';
 import '../features/account/presentation/screens/profile_screen.dart';
+import '../features/account/presentation/screens/edit_profile_screen.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import 'app_shell.dart';
 
@@ -193,6 +194,11 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
                 builder: (BuildContext c, GoRouterState s) =>
                     const ProfileScreen(),
                 routes: <RouteBase>[
+                  GoRoute(
+                    path: 'edit',
+                    builder: (BuildContext c, GoRouterState s) =>
+                        const EditProfileScreen(),
+                  ),
                   GoRoute(
                     path: 'wallet',
                     builder: (BuildContext c, GoRouterState s) =>

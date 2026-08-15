@@ -110,7 +110,8 @@ class CheckoutApi {
     String? line2,
     bool? isDefault,
   }) async {
-    final Response<Map<String, dynamic>> response = await _dio.post<Map<String, dynamic>>(
+    final Response<Map<String, dynamic>> response =
+        await _dio.post<Map<String, dynamic>>(
       ApiConstants.addresses,
       data: <String, dynamic>{
         'recipientName': recipientName,
@@ -126,14 +127,35 @@ class CheckoutApi {
     return Address.fromJson(response.data!);
   }
 
+  Future<Address> updateAddress({
+    required String id,
+    String? city,
+    String? state,
+    String? pincode,
+  }) async {
+    final Response<Map<String, dynamic>> response =
+        await _dio.patch<Map<String, dynamic>>(
+      ApiConstants.address(id),
+      data: <String, dynamic>{
+        if (city != null) 'city': city,
+        if (state != null) 'state': state,
+        if (pincode != null) 'pincode': pincode,
+      },
+    );
+    return Address.fromJson(response.data!);
+  }
+
   /// Preview of the amount payable, computed by the same code that runs at
   /// placement — the figure shown is the figure charged.
-  Future<CartView> quote({int walletCreditPaise = 0, String? couponCode}) async {
-    final Response<Map<String, dynamic>> response = await _dio.get<Map<String, dynamic>>(
+  Future<CartView> quote(
+      {int walletCreditPaise = 0, String? couponCode}) async {
+    final Response<Map<String, dynamic>> response =
+        await _dio.get<Map<String, dynamic>>(
       ApiConstants.checkoutQuote,
       queryParameters: <String, dynamic>{
         'walletCreditPaise': walletCreditPaise,
-        if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,
+        if (couponCode != null && couponCode.isNotEmpty)
+          'couponCode': couponCode,
       },
     );
     return CartView.fromJson(response.data!);
@@ -147,21 +169,25 @@ class CheckoutApi {
     int walletCreditPaise = 0,
     String? couponCode,
   }) async {
-    final Response<Map<String, dynamic>> response = await _dio.post<Map<String, dynamic>>(
+    final Response<Map<String, dynamic>> response =
+        await _dio.post<Map<String, dynamic>>(
       ApiConstants.checkoutPlace,
       data: <String, dynamic>{
         'addressId': addressId,
         'paymentMethod': paymentMethod.wire,
         'walletCreditPaise': walletCreditPaise,
-        if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,
+        if (couponCode != null && couponCode.isNotEmpty)
+          'couponCode': couponCode,
       },
     );
     return PlacedOrder.fromJson(response.data!);
   }
 
   /// Idempotent — verifying an already-confirmed order returns its status.
-  Future<OrderStatus> verifyCod({required String orderId, required String otp}) async {
-    final Response<Map<String, dynamic>> response = await _dio.post<Map<String, dynamic>>(
+  Future<OrderStatus> verifyCod(
+      {required String orderId, required String otp}) async {
+    final Response<Map<String, dynamic>> response =
+        await _dio.post<Map<String, dynamic>>(
       ApiConstants.verifyCod(orderId),
       data: <String, String>{'otp': otp},
     );
