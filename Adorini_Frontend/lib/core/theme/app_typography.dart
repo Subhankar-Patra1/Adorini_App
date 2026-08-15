@@ -112,13 +112,41 @@ class AppTypography {
     height: 28,
   );
 
+  /// Clash Grotesk Medium, for a [TextTheme] slot the scale does not name.
+  ///
+  /// Sizes follow the Material 3 defaults so widgets keep their intended
+  /// proportions — only the typeface changes.
+  static TextStyle _fallback(
+          {required double fontSize, required double height}) =>
+      _clashGrotesk(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
+        height: height,
+      );
+
+  /// Every slot filled, deliberately.
+  ///
+  /// `ThemeData` *merges* the theme it is given with the platform typography
+  /// rather than replacing it, so any slot left null silently keeps Roboto.
+  /// That is how `AlertDialog` headings (`headlineSmall`) and `Badge` counts
+  /// (`labelSmall`) were rendering in a face this app does not otherwise use.
+  /// The named styles below carry the brand scale; the rest fall back to
+  /// Clash Grotesk Medium so nothing can leak through.
   static TextTheme get textTheme => TextTheme(
         displayLarge: displayLg,
+        displayMedium: _fallback(fontSize: 45, height: 52),
+        displaySmall: _fallback(fontSize: 36, height: 44),
         headlineLarge: headlineLg,
         headlineMedium: headlineLgMobile,
+        headlineSmall: _fallback(fontSize: 24, height: 32),
+        titleLarge: _fallback(fontSize: 22, height: 28),
         titleMedium: titleMd,
+        titleSmall: _fallback(fontSize: 14, height: 20),
         bodyLarge: bodyLg,
         bodyMedium: bodyMd,
+        bodySmall: _fallback(fontSize: 12, height: 16),
         labelLarge: labelBold,
+        labelMedium: _fallback(fontSize: 12, height: 16),
+        labelSmall: _fallback(fontSize: 11, height: 16),
       );
 }
