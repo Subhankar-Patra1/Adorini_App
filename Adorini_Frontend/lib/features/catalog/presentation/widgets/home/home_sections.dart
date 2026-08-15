@@ -1,0 +1,494 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../../core/theme/app_colors.dart';
+import '../../../../../core/theme/app_theme.dart';
+import '../../../../../core/theme/app_typography.dart';
+import '../../../../content_videos/data/videos_api.dart';
+import '../../../../content_videos/domain/videos_providers.dart';
+import '../../../data/catalog_api.dart';
+import '../../../data/product_model.dart';
+import '../../../domain/catalog_providers.dart';
+import '../product_card.dart';
+import 'home_skeletons.dart';
+import 'product_rail.dart';
+
+/// Circular category shortcuts.
+///
+/// The tiles carry the category's initial rather than a photograph, because
+/// `Category` is `{slug, name}` — the API has no image to show. A monogram is
+/// the honest version of this component: it reads as a considered choice,
+/// where an empty grey circle reads as a broken image. Adding `imageUrl` to
+/// the categories endpoint is what would upgrade these to the real thing.
+class CategoryRail extends ConsumerWidget {
+  const CategoryRail({super.key});
+
+  static const double _diameter = 66;
+  static const double _height = 108;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<Category>> categories =
+        ref.watch(categoriesProvider);
+
+    return categories.when(
+      loading: () => const SizedBox(
+        height: _height,
+        child: RailSkeleton(cardWidth: _diameter, height: _diameter),
+      ),
+      // Silent on failure. The rail is a shortcut to a tab that is one tap
+      // away in the bottom bar regardless, so an error card here would spend
+      // the shopper's attention on something they lose nothing by missing.
+      error: (Object e, StackTrace s) => const SizedBox.shrink(),
+      data: (List<Category> items) {
+        if (items.isEmpty) return const SizedBox.shrink();
+        // The "New" tile is prepended rather than being a category of its own,
+        // so index 0 is the showcase and every index after it is offset by
+        // one. Kept as an offset rather than a synthetic `Category` because a
+        // fake slug would be a real query the moment someone tapped it.
+        return SizedBox(
+          height: _height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.containerMargin,
+            ),
+            itemCount: items.length + 1,
+            separatorBuilder: (BuildContext c, int i) =>
+                const SizedBox(width: AppSpacing.md),
+            itemBuilder: (BuildContext context, int index) {
+              if (index == 0) {
+                return _NewTile(onTap: () => context.push('/new'));
+              }
+              final Category category = items[index - 1];
+              return _CategoryTile(
+                category: category,
+                onTap: () {
+                  ref.read(catalogFiltersProvider.notifier).state =
+                      CatalogFilters(category: category.slug);
+                  context.go('/catalog');
+                },
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The showcase entry point, sitting first in the category rail.
+///
+/// Filled rather than outlined like its neighbours, and captioned in the
+/// accent. It is the only tile that opens a screen instead of filtering the
+/// catalog, and looking identical to the others would promise otherwise.
+class _NewTile extends StatelessWidget {
+  const _NewTile({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: CategoryRail._diameter + 12,
+        child: Column(
+          children: <Widget>[
+            Container(
+              width: CategoryRail._diameter,
+              height: CategoryRail._diameter,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: <Color>[
+                    AppColors.primaryContainer,
+                    AppColors.secondaryContainer,
+                  ],
+                ),
+                border: Border.all(color: AppColors.primary, width: 1.4),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.auto_awesome,
+                size: 26,
+                color: AppColors.primary,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.base),
+            Text(
+              'New',
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              style: AppTypography.bodyMdBold.copyWith(
+                fontSize: 12,
+                color: AppColors.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({required this.category, required this.onTap});
+
+  final Category category;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: CategoryRail._diameter + 12,
+        child: Column(
+          children: <Widget>[
+            Container(
+              width: CategoryRail._diameter,
+              height: CategoryRail._diameter,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.surfaceContainerLow,
+                border: Border.all(color: AppColors.outlineVariant),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                category.name.characters.first.toUpperCase(),
+                style: AppTypography.titleMd.copyWith(
+                  fontSize: 26,
+                  color: AppColors.primary,
+                ),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.base),
+            Text(
+              category.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTypography.bodyMd.copyWith(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The reassurance strip — the promises a first-time shopper checks for before
+/// they will put anything in a bag.
+///
+/// Every claim here is one the app actually implements: returns has a whole
+/// feature module, COD is a checkout path with its own verification screen,
+/// and the wallet is a real ledger. Nothing on this strip is aspirational.
+class TrustStrip extends StatelessWidget {
+  const TrustStrip({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    const List<(IconData, String)> promises = <(IconData, String)>[
+      (Icons.assignment_return_outlined, 'Easy\nreturns'),
+      (Icons.payments_outlined, 'Cash on\ndelivery'),
+      (Icons.verified_user_outlined, 'Secure\npayments'),
+      (Icons.local_shipping_outlined, 'Pan-India\ndelivery'),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.containerMargin,
+        vertical: AppSpacing.md,
+      ),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: <Widget>[
+          for (int i = 0; i < promises.length; i++) ...<Widget>[
+            if (i > 0)
+              Container(width: 1, height: 34, color: AppColors.divider),
+            Expanded(
+              child: Column(
+                children: <Widget>[
+                  Icon(promises[i].$1, size: 22, color: AppColors.primary),
+                  const SizedBox(height: 6),
+                  Text(
+                    promises[i].$2,
+                    textAlign: TextAlign.center,
+                    style: AppTypography.bodyMd.copyWith(
+                      fontSize: 11,
+                      height: 1.25,
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Teaser for the reels tab: portrait thumbnails that open the feed.
+///
+/// Thumbnails only — no autoplaying video. A home page that starts decoding
+/// clips the moment it appears costs battery and mobile data for content the
+/// shopper has not asked for, and the reels tab is one tap away.
+class ReelsStrip extends ConsumerWidget {
+  const ReelsStrip({super.key});
+
+  static const double _width = 116;
+  static const double _height = 174;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<VideoFeedItem>> feed = ref.watch(videoFeedProvider);
+
+    return feed.maybeWhen(
+      orElse: () => const SizedBox.shrink(),
+      data: (List<VideoFeedItem> items) {
+        if (items.isEmpty) return const SizedBox.shrink();
+        final List<VideoFeedItem> shown = items.take(8).toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SectionHeader(
+              title: 'Shop the look',
+              subtitle: 'Styled on real people, tap to shop',
+              onSeeAll: () => context.go('/videos'),
+            ),
+            SizedBox(
+              height: _height,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.containerMargin,
+                ),
+                itemCount: shown.length,
+                separatorBuilder: (BuildContext c, int i) =>
+                    const SizedBox(width: AppSpacing.sm),
+                itemBuilder: (BuildContext context, int index) =>
+                    _ReelTile(item: shown[index]),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ReelTile extends StatelessWidget {
+  const _ReelTile({required this.item});
+
+  final VideoFeedItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => context.go('/videos'),
+      child: Container(
+        width: ReelsStrip._width,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            if (item.thumbnailUrl != null)
+              CachedNetworkImage(
+                imageUrl: item.thumbnailUrl!,
+                fit: BoxFit.cover,
+                placeholder: (BuildContext c, String u) =>
+                    const ColoredBox(color: AppColors.surfaceContainer),
+                errorWidget: (BuildContext c, String u, Object e) =>
+                    const ColoredBox(color: AppColors.surfaceContainer),
+              ),
+            // Bottom scrim under the play glyph and the tagged-count pill, so
+            // both stay readable over a bright frame.
+            const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.center,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[Colors.transparent, Color(0x991E1B19)],
+                ),
+              ),
+            ),
+            const Center(
+              child: Icon(Icons.play_circle_fill,
+                  size: 34, color: Colors.white70),
+            ),
+            if (item.taggedProducts.isNotEmpty)
+              Positioned(
+                left: 8,
+                bottom: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${item.taggedProducts.length} items',
+                    style: AppTypography.labelBold.copyWith(
+                      fontSize: 10,
+                      color: AppColors.onSurface,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Closing editorial panel — the brand's voice, after the merchandising.
+class EditorialPanel extends StatelessWidget {
+  const EditorialPanel({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.containerMargin,
+        AppSpacing.lg,
+        AppSpacing.containerMargin,
+        AppSpacing.base,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      decoration: BoxDecoration(
+        color: AppColors.tertiaryContainer,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'CRAFTED IN INDIA',
+            style: AppTypography.labelBold.copyWith(
+              fontSize: 10,
+              letterSpacing: 1.6,
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.base),
+          Text(
+            'Adore the elegance\nyou owe yourself',
+            style: AppTypography.headlineLgMobile.copyWith(
+              height: 1.2,
+              color: AppColors.onSurface,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            'Every piece is block-printed and finished by hand, so no two are '
+            'ever identical.',
+            style: AppTypography.bodyMd.copyWith(
+              fontSize: 13,
+              height: 1.5,
+              color: AppColors.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown when a rail's request fails.
+///
+/// Inline and retryable rather than a snackbar: one rail failing is not a
+/// failure of the page, and the shopper should not have to pull-to-refresh
+/// everything to recover a single strip.
+class SectionError extends StatelessWidget {
+  const SectionError({required this.message, required this.onRetry, super.key});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.containerMargin,
+        vertical: AppSpacing.base,
+      ),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.cloud_off_outlined,
+              size: 20, color: AppColors.onSurfaceVariant),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTypography.bodyMd.copyWith(
+                fontSize: 13,
+                color: AppColors.onSurfaceVariant,
+              ),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+/// Grid of products for the endless feed at the foot of the page.
+///
+/// A sliver rather than a boxed grid so it shares the page's single scroll
+/// view — nesting a second scrollable would either fight the outer one or
+/// force the whole catalog to lay out at once.
+class HomeProductGrid extends StatelessWidget {
+  const HomeProductGrid({required this.products, super.key});
+
+  final List<ProductSummary> products;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.containerMargin,
+      ),
+      sliver: SliverGrid(
+        gridDelegate: ProductCard.gridDelegate(
+          context,
+          viewportWidth: MediaQuery.sizeOf(context).width,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          (BuildContext context, int index) => ProductCard(
+            product: products[index],
+            onTap: () =>
+                context.push('/catalog/product/${products[index].slug}'),
+          ),
+          childCount: products.length,
+        ),
+      ),
+    );
+  }
+}

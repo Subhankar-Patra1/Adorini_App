@@ -36,7 +36,10 @@ class WishlistScreen extends ConsumerWidget {
               final ProductSummary product = items[index];
               return ProductCard(
                 product: product,
-                onTap: () => context.go('/catalog/product/${product.slug}'),
+                // `push`, matching every other entry into the PDP. `go`
+                // replaced the whole stack, so Back from a wishlist product
+                // landed on the catalog grid instead of the wishlist.
+                onTap: () => context.push('/catalog/product/${product.slug}'),
               );
             },
           );

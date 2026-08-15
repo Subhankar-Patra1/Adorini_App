@@ -151,7 +151,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final AuthState auth = ref.watch(authControllerProvider);
     final double keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     // Lift scaled off the inset and capped, rather than flipped by a
-    // threshold. The cap keeps the Adorini tagline visible above the card.
+    // threshold.
+    //
+    // Nothing on this screen scales. The emblem, the script wordmark and the
+    // tagline keep their drawn size throughout; the whole composition simply
+    // rides upward, the lockup by `maxLockupLift` and the card by `maxLift`.
+    //
+    // The two caps differ on purpose. Moving both by the same amount would
+    // buy the card no clearance it did not already have — the group would
+    // just translate as a block. Lifting the lockup less closes the gap
+    // between them, and that difference *is* the room the card gains. The
+    // lockup's own cap is what keeps the emblem clear of the Skip control it
+    // is travelling toward, and 100pt of that closing gap is what the card
+    // used to have in total.
     //
     // A `keyboardInset > 48` threshold is not symmetric. Opening, the inset
     // climbs past 48 almost immediately, so the card leaves on time. Closing,
@@ -170,12 +182,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     // into the raised position, so there is no hard edge at the top.
     //
     // No Timer, no setState — `build` already re-runs as the inset changes.
-    const double liftSaturatesAtInset = 170;
-    const double maxLift = 100;
+    const double liftSaturatesAtInset = 200;
+    const double maxLift = 144;
+    const double maxLockupLift = 44;
     final double liftProgress =
         (keyboardInset / liftSaturatesAtInset).clamp(0.0, 1.0);
-    final double keyboardLift =
-        maxLift * Curves.easeOutCubic.transform(liftProgress);
+    final double liftEased = Curves.easeOutCubic.transform(liftProgress);
+    final double keyboardLift = maxLift * liftEased;
+    // Same eased progress, so the lockup and the card start, travel and settle
+    // together instead of arriving as two separate movements.
+    final double lockupLift = maxLockupLift * liftEased;
     // Constant nudge off the bottom edge, on top of the keyboard-driven lift
     // above. Deliberately small: this is reserved as padding, so every point
     // here is a point the card cannot use, and the card is the thing that
@@ -231,7 +247,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         child: Column(
                           children: <Widget>[
                             SizedBox(height: compact ? 2 : 6),
-                            const _Wordmark(),
+                            _Wordmark(lift: lockupLift),
                             Expanded(
                               // A plain Transform, NOT an AnimatedContainer.
                               //
@@ -269,15 +285,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                   // Centring splits that slack above and below.
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
-                                  alignment: Alignment.center,
-                                  child: SizedBox(
-                                    // The OTP card is taller, so the FittedBox
-                                    // scales it down more. Use a smaller canvas
-                                    // for the shorter Welcome card so both
-                                    // states finish at the same visible width.
-                                    width: constraints.maxWidth *
-                                        (_otpSent ? 1.11 : 1.03),
-                                    child: Column(
+                                    alignment: Alignment.center,
+                                    child: SizedBox(
+                                      // The OTP card is taller, so the FittedBox
+                                      // scales it down more. Use a smaller canvas
+                                      // for the shorter Welcome card so both
+                                      // states finish at the same visible width.
+                                      width: constraints.maxWidth *
+                                          (_otpSent ? 1.11 : 1.03),
+                                      child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: <Widget>[
                                           authCard,
@@ -399,90 +415,106 @@ class _TopBar extends StatelessWidget {
 ///
 /// The source fill is irrelevant: `srcIn` replaces it with the brand ink.
 class _Wordmark extends StatelessWidget {
-  const _Wordmark();
+  const _Wordmark({this.lift = 0});
+
+  /// How far the whole lockup rides upward, in logical pixels.
+  ///
+  /// A translation, never a scale: the emblem, the script wordmark and the
+  /// tagline all keep their exact drawn size while the keyboard is up. The
+  /// group moves as one, so the optical corrections between the three marks
+  /// stay intact.
+  final double lift;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        Transform.translate(
-          offset: const Offset(4, 0),
-          child: SvgPicture.asset(
-            'assets/images/logo.svg',
-            height: 118,
-            // Tinted to the brand ink so the emblem and the wordmark below it
-            // sit at the same weight.
-            colorFilter:
-                const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
-            // The pair announces once, on the emblem. Labelling the wordmark
-            // too would read the brand name twice; unlabelled, it stays
-            // decorative.
-            semanticsLabel: 'Adorini',
-          ),
-        ),
-        const SizedBox(height: 2),
-        // Optically centred, not just geometrically. Both marks sit dead centre
-        // by bounding box, but their ink does not: the script's centre of mass
-        // is 1.8% right of its box (the trailing flourish and the flower over
-        // the 'ni'), while the emblem's is 0.9% left. Left unadjusted the two
-        // disagree by ~4px and the pair reads as off-axis. The emblem's own
-        // ~1px correction is below the perceptual threshold, so only the
-        // wordmark is nudged.
-        Transform.translate(
-          offset: const Offset(-4, 0),
-          child: SvgPicture.asset(
-            'assets/images/wordmark.svg',
-            // Trimmed from 104. Its ink fills only ~76% of the box, so it
-            // gives back real height for less apparent size loss than the
-            // emblem would — and the height freed here is what lets the card
-            // grow instead of being scaled back down by the FittedBox.
-            height: 92,
-            colorFilter:
-                const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
-          ),
-        ),
-        // Deliberately generous space above and below. The slogan is the only
-        // thing standing between the lockup and the card, so letting it sit in
-        // that band — rather than tucked tight under the wordmark — is what
-        // makes the gap read as composition instead of leftover emptiness.
-        const SizedBox(height: 22),
-        // Broken by hand rather than left to wrap. The split falls after
-        // 'elegance' so both lines carry a complete phrase, and keeping it off
-        // one long line also keeps the ends clear of the garments that close
-        // in from both edges of the backdrop at this height.
-        //
-        // Curly quotes, not straight ones: a straight double quote is a typing
-        // convention, and next to a script logotype it reads as a mistake.
-        //
-        // Nudged right to sit on the same optical axis as the emblem above it.
-        Padding(
-          padding: const EdgeInsets.only(left: 34, right: 22),
-          child: Text(
-            '“Adore the elegance\nyou owe yourself”',
-            textAlign: TextAlign.center,
-            // Sentient Bold. Built from `titleMd` (Sentient Medium) with the
-            // weight overridden — safe here because Sentient is a bundled
-            // asset family with both cuts registered, so Flutter resolves
-            // w700 to the real Bold file. The same override on a google_fonts
-            // style would only fake it, since the family name there is baked
-            // per weight at call time.
-            style: AppTypography.titleMd.copyWith(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              // NOTE: only Sentient-Medium and Sentient-Bold are bundled —
-              // there is no italic cut. Flutter has no true italic to reach
-              // for, so this is a synthetic slant, not drawn italic glyphs.
-              // Adding Sentient-Italic to assets/fonts (and to the family in
-              // pubspec.yaml under `style: italic`) would make it real.
-              fontStyle: FontStyle.italic,
-              height: 1.5,
-              letterSpacing: 0.4,
-              color: const Color(0xFF8C173A),
+    // Transform, not padding or a shortened SizedBox: this must be paint-only.
+    // Changing the lockup's reserved height would re-run layout on the Column
+    // every frame of the keyboard's slide — the card, the trust row and the
+    // FittedBox's scale factor would all be recomputed along with it, which is
+    // exactly the whole-screen resize this screen exists to avoid.
+    return Transform.translate(
+      offset: Offset(0, -lift),
+      child: Column(
+        children: <Widget>[
+          Transform.translate(
+            offset: const Offset(4, 0),
+            child: SvgPicture.asset(
+              'assets/images/logo.svg',
+              height: 118,
+              // Tinted to the brand ink so the emblem and the wordmark below it
+              // sit at the same weight.
+              colorFilter:
+                  const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
+              // The pair announces once, on the emblem. Labelling the wordmark
+              // too would read the brand name twice; unlabelled, it stays
+              // decorative.
+              semanticsLabel: 'Adorini',
             ),
           ),
-        ),
-        const SizedBox(height: 22),
-      ],
+          const SizedBox(height: 2),
+          // Optically centred, not just geometrically. Both marks sit dead centre
+          // by bounding box, but their ink does not: the script's centre of mass
+          // is 1.8% right of its box (the trailing flourish and the flower over
+          // the 'ni'), while the emblem's is 0.9% left. Left unadjusted the two
+          // disagree by ~4px and the pair reads as off-axis. The emblem's own
+          // ~1px correction is below the perceptual threshold, so only the
+          // wordmark is nudged.
+          Transform.translate(
+            offset: const Offset(-4, 0),
+            child: SvgPicture.asset(
+              'assets/images/wordmark.svg',
+              // Trimmed from 104. Its ink fills only ~76% of the box, so it
+              // gives back real height for less apparent size loss than the
+              // emblem would — and the height freed here is what lets the card
+              // grow instead of being scaled back down by the FittedBox.
+              height: 92,
+              colorFilter:
+                  const ColorFilter.mode(Color(0xFF2A1115), BlendMode.srcIn),
+            ),
+          ),
+          // Deliberately generous space above and below. The slogan is the only
+          // thing standing between the lockup and the card, so letting it sit in
+          // that band — rather than tucked tight under the wordmark — is what
+          // makes the gap read as composition instead of leftover emptiness.
+          const SizedBox(height: 22),
+          // Broken by hand rather than left to wrap. The split falls after
+          // 'elegance' so both lines carry a complete phrase, and keeping it off
+          // one long line also keeps the ends clear of the garments that close
+          // in from both edges of the backdrop at this height.
+          //
+          // Curly quotes, not straight ones: a straight double quote is a typing
+          // convention, and next to a script logotype it reads as a mistake.
+          //
+          // Nudged right to sit on the same optical axis as the emblem above it.
+          Padding(
+            padding: const EdgeInsets.only(left: 34, right: 22),
+            child: Text(
+              '“Adore the elegance\nyou owe yourself”',
+              textAlign: TextAlign.center,
+              // Sentient Bold. Built from `titleMd` (Sentient Medium) with the
+              // weight overridden — safe here because Sentient is a bundled
+              // asset family with both cuts registered, so Flutter resolves
+              // w700 to the real Bold file. The same override on a google_fonts
+              // style would only fake it, since the family name there is baked
+              // per weight at call time.
+              style: AppTypography.titleMd.copyWith(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                // NOTE: only Sentient-Medium and Sentient-Bold are bundled —
+                // there is no italic cut. Flutter has no true italic to reach
+                // for, so this is a synthetic slant, not drawn italic glyphs.
+                // Adding Sentient-Italic to assets/fonts (and to the family in
+                // pubspec.yaml under `style: italic`) would make it real.
+                fontStyle: FontStyle.italic,
+                height: 1.5,
+                letterSpacing: 0.4,
+                color: const Color(0xFF8C173A),
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+        ],
+      ),
     );
   }
 }
@@ -628,7 +660,9 @@ class _AuthCard extends StatelessWidget {
                     style: AppTypography.bodyMd.copyWith(
                       fontSize: 13,
                       color: AppColors.onSurfaceVariant,
-                      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                      fontFeatures: const <FontFeature>[
+                        FontFeature.tabularFigures()
+                      ],
                     ),
                   ),
                 ),
@@ -1043,7 +1077,8 @@ class _OtpFieldState extends State<_OtpField> {
 
   void _pushOut() {
     _writingOut = true;
-    widget.controller.text = _boxes.map((TextEditingController c) => c.text).join();
+    widget.controller.text =
+        _boxes.map((TextEditingController c) => c.text).join();
     _writingOut = false;
   }
 

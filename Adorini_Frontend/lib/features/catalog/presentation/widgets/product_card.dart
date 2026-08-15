@@ -82,15 +82,21 @@ class ProductCard extends StatelessWidget {
             AspectRatio(
               aspectRatio: imageAspectRatio,
               child: product.thumbnailUrl == null
-                  ? const ColoredBox(color: AppColors.surfaceContainer)
+                  ? const _ImageFallback()
                   : CachedNetworkImage(
                       imageUrl: product.thumbnailUrl!,
                       fit: BoxFit.cover,
+                      // A flat fill while loading, a marked fallback when
+                      // there is nothing to load. The two states look
+                      // different on purpose: one resolves in a moment, the
+                      // other never will, and rendering both as the same
+                      // blank rectangle makes a catalog with no imagery look
+                      // like a catalog that is permanently loading.
                       placeholder: (BuildContext context, String url) =>
                           const ColoredBox(color: AppColors.surfaceContainer),
                       errorWidget: (BuildContext context, String url,
                               Object error) =>
-                          const ColoredBox(color: AppColors.surfaceContainer),
+                          const _ImageFallback(),
                     ),
             ),
             // Expanded, so the caption takes exactly the height the cell has
@@ -150,6 +156,29 @@ class ProductCard extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown where a product image should be but is not.
+///
+/// A garment glyph on the container tone rather than a bare rectangle. The
+/// catalog currently ships without thumbnails, and an unmarked blank block
+/// reads as a broken card — this reads as "no photo yet", which is the truth.
+class _ImageFallback extends StatelessWidget {
+  const _ImageFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const ColoredBox(
+      color: AppColors.surfaceContainer,
+      child: Center(
+        child: Icon(
+          Icons.checkroom_outlined,
+          size: 34,
+          color: AppColors.outlineVariant,
         ),
       ),
     );

@@ -6,6 +6,7 @@ import '../features/auth/domain/auth_controller.dart';
 import '../features/auth/domain/auth_state.dart';
 import '../features/auth/presentation/screens/onboarding_screen.dart';
 import '../features/catalog/presentation/screens/home_screen.dart';
+import '../features/catalog/presentation/screens/new_showcase_screen.dart';
 import '../features/catalog/presentation/screens/product_list_screen.dart';
 import '../features/catalog/presentation/screens/wishlist_screen.dart';
 import '../features/content_videos/presentation/screens/video_feed_screen.dart';
@@ -62,15 +63,41 @@ final Provider<AuthRouterRefresh> _authRouterRefreshProvider =
 /// the redirect, and tapping one of those simply returns the shopper here to
 /// sign in.
 bool _isGuestBrowsable(String location) {
-  const List<String> browsable = <String>['/home', '/catalog', '/videos'];
+  // '/new' is the showcase. It reads the same `@Public()` product list the
+  // catalog does, so gating it would turn the home page's most eye-catching
+  // tile into a sign-in wall for a shopper who has not decided to buy yet.
+  const List<String> browsable = <String>[
+    '/home',
+    '/catalog',
+    '/videos',
+    '/new',
+  ];
   return browsable.any(location.startsWith);
 }
+
+/// The Navigator above the tab shell.
+///
+/// Needed so that routes reachable from more than one tab — the PDP above all
+/// — can declare themselves as belonging to it. Without that, `context.push`
+/// of a route nested inside the catalog branch, performed from the *home*
+/// branch, asks GoRouter to re-enter the shell it is already inside. It builds
+/// a second `StatefulShellRoute` match whose page key is derived from the
+/// route object's `hashCode` — the same object, therefore the same key — and
+/// the root Navigator asserts on the duplicate:
+///
+///     '!keyReservation.contains(key)': is not true
+///
+/// The visible symptom before the assertion fires is a product tap that snaps
+/// back to the top of Home instead of opening anything.
+final GlobalKey<NavigatorState> _rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'root');
 
 final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
   // Identity-stable: this provider never rebuilds, so neither does the router.
   final AuthRouterRefresh refresh = ref.watch(_authRouterRefreshProvider);
 
   return GoRouter(
+    navigatorKey: _rootNavigatorKey,
     initialLocation: '/splash',
     refreshListenable: refresh,
     redirect: (BuildContext context, GoRouterState state) {
@@ -131,8 +158,18 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
                 builder: (BuildContext c, GoRouterState s) =>
                     const ProductListScreen(),
                 routes: <RouteBase>[
+                  // Pinned to the root Navigator. The path stays nested under
+                  // /catalog so every existing link keeps working, but the
+                  // page is pushed *above* the tab shell rather than inside
+                  // the catalog branch — which is what makes it openable from
+                  // the home rails, the reels feed and the showcase alike.
+                  //
+                  // It also matches how a PDP should behave: full screen, over
+                  // the tabs, with Back returning to wherever it was opened
+                  // from rather than to the catalog grid.
                   GoRoute(
                     path: 'product/:slug',
+                    parentNavigatorKey: _rootNavigatorKey,
                     builder: (BuildContext c, GoRouterState s) =>
                         PdpScreen(slug: s.pathParameters['slug']!),
                   ),
@@ -188,6 +225,14 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
             ],
           ),
         ],
+      ),
+      // Outside the tab shell on purpose: the showcase is a full-bleed
+      // composition, and the bottom bar would both crop the garment and
+      // contradict the screen's own Back control.
+      GoRoute(
+        path: '/new',
+        builder: (BuildContext context, GoRouterState state) =>
+            const NewShowcaseScreen(),
       ),
       GoRoute(
         path: '/cart',
