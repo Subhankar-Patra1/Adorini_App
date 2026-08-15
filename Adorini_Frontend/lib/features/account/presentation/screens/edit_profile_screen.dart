@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -21,7 +24,11 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
+enum _SaveStatus { save, saving, saved }
+
+class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
+    with WidgetsBindingObserver {
+  static const String _birthdayPreferenceKeyPrefix = 'profile_birthday';
   static const List<String> _indianStates = <String>[
     'Andhra Pradesh',
     'Arunachal Pradesh',
@@ -74,24 +81,49 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   Uint8List? _selectedPhoto;
   String? _gender;
   String? _state;
+  DateTime? _birthday;
   bool _isLoading = true;
-  bool _isSaving = false;
+  _SaveStatus _saveStatus = _SaveStatus.save;
+  int _editVersion = 0;
   bool _isUploadingPhoto = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _firstNameController.addListener(_markDirty);
+    _lastNameController.addListener(_markDirty);
+    _emailController.addListener(_markDirty);
+    _pincodeController.addListener(_markDirty);
+    _cityController.addListener(_markDirty);
     _loadProfile();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _firstNameController.dispose();
     _lastNameController.dispose();
     _emailController.dispose();
     _pincodeController.dispose();
     _cityController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isNotEmpty && views.first.viewInsets.bottom == 0) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    }
+  }
+
+  void _markDirty() {
+    if (_isLoading) return;
+    _editVersion++;
+    if (_saveStatus != _SaveStatus.saving && _saveStatus != _SaveStatus.save) {
+      setState(() => _saveStatus = _SaveStatus.save);
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -121,6 +153,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         }
         _isLoading = false;
       });
+      await _loadBirthday(user.id);
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -143,6 +176,57 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     return null;
   }
 
+  String _birthdayPreferenceKey(String userId) =>
+      '$_birthdayPreferenceKeyPrefix:$userId';
+
+  Future<void> _loadBirthday(String userId) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final DateTime? saved = DateTime.tryParse(
+      preferences.getString(_birthdayPreferenceKey(userId)) ?? '',
+    );
+    if (!mounted || saved == null) return;
+    setState(() => _birthday = saved);
+  }
+
+  Future<void> _openBirthdaySheet() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final DateTime now = DateTime.now();
+    final DateTime initialDate = _birthday ?? DateTime(2000, 1, 1);
+    final DateTime? selected = await showModalBottomSheet<DateTime>(
+      context: context,
+      useSafeArea: true,
+      requestFocus: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) => _SmoothDismissibleBirthdaySheet(
+        child: _BirthdayPickerSheet(
+          initialDate: initialDate,
+          minimumYear: 1820,
+          maximumYear: now.year,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (mounted) FocusManager.instance.primaryFocus?.unfocus();
+    });
+    if (selected == null || _user == null) return;
+
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _birthdayPreferenceKey(_user!.id),
+      selected.toIso8601String(),
+    );
+    if (!mounted) return;
+    setState(() {
+      _birthday = selected;
+      _editVersion++;
+      _saveStatus = _SaveStatus.save;
+    });
+    _showMessage('Birthday saved on this device.');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -152,6 +236,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
         leadingWidth: 48,
         titleSpacing: 0,
         title: const Text('Edit Profile'),
+        actions: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
+            child: Center(
+              child: _SavePill(
+                status: _saveStatus,
+                enabled: !_isLoading,
+                onPressed: _saveProfile,
+              ),
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -162,7 +258,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                   AppSpacing.sm,
                   AppSpacing.sm,
                   AppSpacing.sm,
-                  104,
+                  AppSpacing.lg,
                 ),
                 children: <Widget>[
                   _buildPhotoSection(),
@@ -176,14 +272,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                     phone: _user?.phone ?? '',
                     emailController: _emailController,
                     gender: _gender,
+                    birthdayLabel: _birthday == null
+                        ? 'Add Birthday'
+                        : DateFormat('dd MMMM yyyy').format(_birthday!),
                     emailValidator: _validateEmail,
-                    onGenderChanged: (String? value) =>
-                        setState(() => _gender = value),
+                    onGenderChanged: (String? value) {
+                      setState(() => _gender = value);
+                      _markDirty();
+                    },
                     onPhoneTap: () => _showMessage(
                       'Phone-number changes will use a separate OTP verification flow.',
                     ),
-                    onBirthdayTap: () =>
-                        _showMessage('Birthday support is coming soon.'),
+                    onBirthdayTap: _openBirthdaySheet,
                   ),
                   const SizedBox(height: AppSpacing.sm),
                   _ProfileSection(
@@ -237,34 +337,15 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
                           value: _state,
                           enabled: _defaultAddress != null,
                           items: _stateItems,
-                          onChanged: (String? value) =>
-                              setState(() => _state = value),
+                          onChanged: (String? value) {
+                            setState(() => _state = value);
+                            _markDirty();
+                          },
                         ),
                       ],
                     ),
                   ),
                 ],
-              ),
-            ),
-      bottomNavigationBar: _isLoading
-          ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.sm,
-                  AppSpacing.base,
-                  AppSpacing.sm,
-                  AppSpacing.sm,
-                ),
-                child: ElevatedButton(
-                  onPressed: _isSaving ? null : _saveProfile,
-                  child: _isSaving
-                      ? const SizedBox.square(
-                          dimension: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('SAVE CHANGES'),
-                ),
               ),
             ),
     );
@@ -423,8 +504,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   }
 
   Future<void> _saveProfile() async {
+    if (_saveStatus != _SaveStatus.save) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    setState(() => _isSaving = true);
+    final int savingVersion = _editVersion;
+    setState(() => _saveStatus = _SaveStatus.saving);
     try {
       final String fullName = <String>[
         _firstNameController.text.trim(),
@@ -453,12 +536,14 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       if (!mounted) return;
       setState(() {
         _user = user;
-        _isSaving = false;
+        _saveStatus = savingVersion == _editVersion
+            ? _SaveStatus.saved
+            : _SaveStatus.save;
       });
       _showMessage('Your profile has been updated.');
     } on DioException catch (error) {
       if (!mounted) return;
-      setState(() => _isSaving = false);
+      setState(() => _saveStatus = _SaveStatus.save);
       _showMessage(apiErrorMessage(error));
     }
   }
@@ -467,6 +552,361 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _SavePill extends StatelessWidget {
+  const _SavePill({
+    required this.status,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final _SaveStatus status;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final String label = switch (status) {
+      _SaveStatus.save => 'Save',
+      _SaveStatus.saving => 'Saving',
+      _SaveStatus.saved => 'Saved',
+    };
+    final bool canPress = enabled && status == _SaveStatus.save;
+    final Color backgroundColor = !enabled
+        ? AppColors.surfaceContainerHighest
+        : status == _SaveStatus.saved
+            ? AppColors.primaryContainer
+            : AppColors.primary;
+    final Color foregroundColor = !enabled
+        ? AppColors.onSurfaceVariant
+        : status == _SaveStatus.saved
+            ? AppColors.onPrimaryContainer
+            : AppColors.onPrimary;
+
+    return Material(
+      color: backgroundColor,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: canPress ? onPressed : null,
+        child: SizedBox(
+          width: 76,
+          height: 34,
+          child: Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: Text(
+                label,
+                key: ValueKey<_SaveStatus>(status),
+                style: AppTypography.labelBold.copyWith(
+                  color: foregroundColor,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmoothDismissibleBirthdaySheet extends StatefulWidget {
+  const _SmoothDismissibleBirthdaySheet({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_SmoothDismissibleBirthdaySheet> createState() =>
+      _SmoothDismissibleBirthdaySheetState();
+}
+
+class _SmoothDismissibleBirthdaySheetState
+    extends State<_SmoothDismissibleBirthdaySheet> {
+  static const Duration _settleDuration = Duration(milliseconds: 200);
+
+  double _dragOffset = 0;
+  bool _isDragging = false;
+  bool _isDismissing = false;
+
+  void _handleDragUpdate(DragUpdateDetails details) {
+    if (_isDismissing) return;
+    setState(() {
+      _isDragging = true;
+      _dragOffset = (_dragOffset + details.delta.dy).clamp(0, 600);
+    });
+  }
+
+  Future<void> _handleDragEnd(DragEndDetails details) async {
+    if (_isDismissing) return;
+    final bool shouldDismiss =
+        _dragOffset > 72 || (details.primaryVelocity ?? 0) > 650;
+    setState(() {
+      _isDragging = false;
+      _isDismissing = shouldDismiss;
+      _dragOffset = shouldDismiss ? MediaQuery.sizeOf(context).height : 0;
+    });
+    if (!shouldDismiss) return;
+    await Future<void>.delayed(_settleDuration);
+    if (!mounted) return;
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onVerticalDragUpdate: _handleDragUpdate,
+      onVerticalDragEnd: _handleDragEnd,
+      child: AnimatedContainer(
+        duration: _isDragging ? Duration.zero : _settleDuration,
+        curve: Curves.easeOutCubic,
+        transform: Matrix4.translationValues(0, _dragOffset, 0),
+        child: Material(
+          color: AppColors.surfaceContainerLowest,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(AppRadius.card),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const SizedBox(height: AppSpacing.base),
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.outlineVariant,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+              ),
+              widget.child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BirthdayPickerSheet extends StatefulWidget {
+  const _BirthdayPickerSheet({
+    required this.initialDate,
+    required this.minimumYear,
+    required this.maximumYear,
+  });
+
+  final DateTime initialDate;
+  final int minimumYear;
+  final int maximumYear;
+
+  @override
+  State<_BirthdayPickerSheet> createState() => _BirthdayPickerSheetState();
+}
+
+class _BirthdayPickerSheetState extends State<_BirthdayPickerSheet> {
+  static const List<String> _months = <String>[
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+
+  late int _day;
+  late int _month;
+  late int _year;
+  late FixedExtentScrollController _dayController;
+  late FixedExtentScrollController _monthController;
+  late FixedExtentScrollController _yearController;
+
+  @override
+  void initState() {
+    super.initState();
+    _year = widget.initialDate.year.clamp(
+      widget.minimumYear,
+      widget.maximumYear,
+    );
+    _month = widget.initialDate.month;
+    _day = widget.initialDate.day.clamp(1, _daysInMonth(_year, _month));
+    _dayController = FixedExtentScrollController(initialItem: _day - 1);
+    _monthController = FixedExtentScrollController(initialItem: _month - 1);
+    _yearController = FixedExtentScrollController(
+      initialItem: _year - widget.minimumYear,
+    );
+  }
+
+  @override
+  void dispose() {
+    _dayController.dispose();
+    _monthController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+
+  int _daysInMonth(int year, int month) => DateTime(year, month + 1, 0).day;
+
+  void _changeMonth(int index) {
+    final int nextMonth = index + 1;
+    final int maximumDay = _daysInMonth(_year, nextMonth);
+    final bool needsClamp = _day > maximumDay;
+    setState(() {
+      _month = nextMonth;
+      if (needsClamp) _day = maximumDay;
+    });
+    if (needsClamp) {
+      _dayController.animateToItem(
+        maximumDay - 1,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  void _changeYear(int index) {
+    final int nextYear = widget.minimumYear + index;
+    final int maximumDay = _daysInMonth(nextYear, _month);
+    final bool needsClamp = _day > maximumDay;
+    setState(() {
+      _year = nextYear;
+      if (needsClamp) _day = maximumDay;
+    });
+    if (needsClamp) {
+      _dayController.animateToItem(
+        maximumDay - 1,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int dayCount = _daysInMonth(_year, _month);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.md,
+        AppSpacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Birthday',
+            style: AppTypography.titleMd.copyWith(
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          SizedBox(
+            height: 190,
+            child: Stack(
+              alignment: Alignment.center,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      flex: 2,
+                      child: CupertinoPicker.builder(
+                        scrollController: _dayController,
+                        itemExtent: 40,
+                        diameterRatio: 1.45,
+                        useMagnifier: true,
+                        magnification: 1.08,
+                        selectionOverlay: const SizedBox.shrink(),
+                        childCount: dayCount,
+                        onSelectedItemChanged: (int index) =>
+                            setState(() => _day = index + 1),
+                        itemBuilder: (BuildContext context, int index) =>
+                            Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: AppTypography.bodyMd,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 3,
+                      child: CupertinoPicker.builder(
+                        scrollController: _monthController,
+                        itemExtent: 40,
+                        diameterRatio: 1.45,
+                        useMagnifier: true,
+                        magnification: 1.08,
+                        selectionOverlay: const SizedBox.shrink(),
+                        childCount: _months.length,
+                        onSelectedItemChanged: _changeMonth,
+                        itemBuilder: (BuildContext context, int index) =>
+                            Center(
+                          child: Text(
+                            _months[index],
+                            style: AppTypography.bodyMd,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: CupertinoPicker.builder(
+                        scrollController: _yearController,
+                        itemExtent: 40,
+                        diameterRatio: 1.45,
+                        useMagnifier: true,
+                        magnification: 1.08,
+                        selectionOverlay: const SizedBox.shrink(),
+                        childCount: widget.maximumYear - widget.minimumYear + 1,
+                        onSelectedItemChanged: _changeYear,
+                        itemBuilder: (BuildContext context, int index) =>
+                            Center(
+                          child: Text(
+                            '${widget.minimumYear + index}',
+                            style: AppTypography.bodyMd,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                IgnorePointer(
+                  child: Container(
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      border: Border.symmetric(
+                        horizontal: BorderSide(
+                          color: AppColors.primaryContainer,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(
+              context,
+              DateTime(_year, _month, _day),
+            ),
+            child: const Text('SAVE BIRTHDAY'),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -585,6 +1025,8 @@ class _NameField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      onTapOutside: (PointerDownEvent event) =>
+          FocusScope.of(context).unfocus(),
       textInputAction: textInputAction,
       validator: validator,
       style: AppTypography.bodyMd,
@@ -640,6 +1082,8 @@ class _ProfileTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: controller,
+      onTapOutside: (PointerDownEvent event) =>
+          FocusScope.of(context).unfocus(),
       enabled: enabled,
       keyboardType: keyboardType,
       textInputAction: textInputAction,
@@ -695,6 +1139,7 @@ class _InfoSection extends StatelessWidget {
     required this.phone,
     required this.emailController,
     required this.gender,
+    required this.birthdayLabel,
     required this.emailValidator,
     required this.onGenderChanged,
     required this.onPhoneTap,
@@ -704,6 +1149,7 @@ class _InfoSection extends StatelessWidget {
   final String phone;
   final TextEditingController emailController;
   final String? gender;
+  final String birthdayLabel;
   final FormFieldValidator<String> emailValidator;
   final ValueChanged<String?> onGenderChanged;
   final VoidCallback onPhoneTap;
@@ -716,21 +1162,19 @@ class _InfoSection extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.card),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.sm,
-          AppSpacing.md,
-          AppSpacing.base,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.base),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              'Your Info',
-              style: AppTypography.titleMd.copyWith(
-                fontSize: 15.5,
-                height: 1.3,
-                color: AppColors.primary,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Text(
+                'Your Info',
+                style: AppTypography.titleMd.copyWith(
+                  fontSize: 15.5,
+                  height: 1.3,
+                  color: AppColors.primary,
+                ),
               ),
             ),
             const SizedBox(height: AppSpacing.xs),
@@ -742,21 +1186,27 @@ class _InfoSection extends StatelessWidget {
               onTap: onPhoneTap,
             ),
             const SizedBox(height: AppSpacing.xs),
-            _InfoEmailRow(
-              controller: emailController,
-              validator: emailValidator,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: _InfoEmailRow(
+                controller: emailController,
+                validator: emailValidator,
+              ),
             ),
             const SizedBox(height: AppSpacing.xs),
             _InfoTapRow(
               icon: Icons.cake,
               iconColor: const Color(0xFF289BD3),
-              value: 'Add Birthday',
+              value: birthdayLabel,
               onTap: onBirthdayTap,
             ),
             const SizedBox(height: AppSpacing.xs),
-            _InfoGenderRow(
-              value: gender,
-              onChanged: onGenderChanged,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: _InfoGenderRow(
+                value: gender,
+                onChanged: onGenderChanged,
+              ),
             ),
           ],
         ),
@@ -784,9 +1234,11 @@ class _InfoTapRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(AppRadius.md),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: 6,
+        ),
         child: Row(
           children: <Widget>[
             _InfoIcon(icon: icon, color: iconColor),
@@ -836,6 +1288,8 @@ class _InfoEmailRow extends StatelessWidget {
         Expanded(
           child: TextFormField(
             controller: controller,
+            onTapOutside: (PointerDownEvent event) =>
+                FocusScope.of(context).unfocus(),
             validator: validator,
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.next,
@@ -878,11 +1332,27 @@ class _InfoGenderRow extends StatefulWidget {
 class _InfoGenderRowState extends State<_InfoGenderRow> {
   static const Duration _duration = Duration(milliseconds: 240);
 
+  final GlobalKey _femaleOptionKey = GlobalKey();
   bool _isExpanded = false;
 
-  void _toggle() {
+  Future<void> _toggle() async {
     FocusScope.of(context).unfocus();
-    setState(() => _isExpanded = !_isExpanded);
+    if (_isExpanded) {
+      setState(() => _isExpanded = false);
+      return;
+    }
+
+    setState(() => _isExpanded = true);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    if (!mounted) return;
+    final BuildContext? femaleContext = _femaleOptionKey.currentContext;
+    if (femaleContext == null || !femaleContext.mounted) return;
+    await Scrollable.ensureVisible(
+      femaleContext,
+      alignment: 0.78,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   Future<void> _select(String gender) async {
@@ -964,6 +1434,7 @@ class _InfoGenderRowState extends State<_InfoGenderRow> {
                         onTap: () => _select('Male'),
                       ),
                       _GenderOption(
+                        key: _femaleOptionKey,
                         label: 'Female',
                         selected: widget.value == 'Female',
                         onTap: () => _select('Female'),
@@ -982,6 +1453,7 @@ class _InfoGenderRowState extends State<_InfoGenderRow> {
 
 class _GenderOption extends StatelessWidget {
   const _GenderOption({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,
