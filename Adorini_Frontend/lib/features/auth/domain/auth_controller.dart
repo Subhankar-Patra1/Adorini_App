@@ -38,7 +38,14 @@ class AuthController extends Notifier<AuthState> {
       final OtpRequested requested = await _api.requestOtp(phone);
       state = state.copyWith(isLoading: false, otpRequested: requested);
     } on DioException catch (e) {
-      state = state.copyWith(isLoading: false, error: apiErrorMessage(e));
+      state = state.copyWith(
+        isLoading: false,
+        error: apiErrorMessage(e),
+        // Present only on OTP_COOLDOWN / rate limits; lets the screen run a
+        // live countdown rather than showing a frozen "wait 58s" that is
+        // already wrong a second later.
+        retryAfterSeconds: apiRetryAfterSeconds(e),
+      );
     }
   }
 

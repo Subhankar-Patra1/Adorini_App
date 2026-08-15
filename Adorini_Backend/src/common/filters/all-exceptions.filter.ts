@@ -24,6 +24,21 @@ interface ErrorBody {
   message: string;
   timestamp: string;
   path: string;
+
+  /**
+   * Seconds until the caller may retry, on the responses that are rate
+   * limited (`OTP_COOLDOWN`, COD OTP resend).
+   *
+   * Named explicitly rather than spreading the thrown payload: the fixed
+   * shape of this body is a security property — it is what stops an
+   * unhandled error leaking a stack trace or SQL fragment — so extra fields
+   * are opted into one at a time, never passed through wholesale.
+   *
+   * Without this the number was computed, embedded in the sentence, and then
+   * discarded, leaving clients to either scrape the message or hard-code a
+   * cooldown the server alone actually owns.
+   */
+  retryAfterSeconds?: number;
 }
 
 /**
@@ -47,7 +62,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const { status, code, message, logAsError } = this.classify(exception);
+    const { status, code, message, logAsError, retryAfterSeconds } = this.classify(exception);
 
     if (logAsError) {
       this.logger.error(
@@ -62,6 +77,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
       timestamp: new Date().toISOString(),
       path: request.url,
+      ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
     };
 
     response.status(status).json(body);
@@ -72,6 +88,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     code: string;
     message: string;
     logAsError: boolean;
+    retryAfterSeconds?: number;
   } {
     // Anything the application threw deliberately — including Zod validation
     // rejections surfaced by ZodValidationPipe — already carries the right status.
@@ -80,7 +97,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const payload =
         typeof response === 'string'
           ? { message: response }
-          : (response as { message?: string | string[]; code?: string });
+          : (response as {
+              message?: string | string[];
+              code?: string;
+              retryAfterSeconds?: number;
+            });
 
       const message = payload.message ?? exception.message;
 
@@ -99,6 +120,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message: Array.isArray(message) ? message.join('; ') : message,
         // 5xx we raised ourselves is still worth a stack trace; 4xx is routine.
         logAsError: exception.getStatus() >= 500,
+        retryAfterSeconds: payload.retryAfterSeconds,
       };
     }
 

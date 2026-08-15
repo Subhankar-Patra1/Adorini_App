@@ -35,32 +35,98 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _otpSent = false;
   bool _showReferralField = false;
 
+  /// When the server will next accept a resend.
+  ///
+  /// Stored as a wall-clock instant rather than a counter that the ticker
+  /// decrements. A periodic Timer is not a clock — Android throttles timers in
+  /// backgrounded apps, so a decrementing counter drifts and would still be
+  /// showing "wait 40s" after the user came back a minute later. Deriving the
+  /// remaining seconds from `DateTime.now()` on each tick stays truthful no
+  /// matter how unevenly the ticks arrive.
+  DateTime? _resendAvailableAt;
+  Timer? _resendTicker;
+
+  int get _resendSecondsLeft {
+    final DateTime? at = _resendAvailableAt;
+    if (at == null) return 0;
+    final int left = at.difference(DateTime.now()).inSeconds;
+    return left > 0 ? left : 0;
+  }
+
   @override
   void initState() {
     super.initState();
-    _phoneController.addListener(_onPhoneChanged);
+    _phoneController.addListener(_onInputChanged);
+    // Drives the Continue button's enabled state on the OTP step too, so it
+    // cannot be tapped on a half-typed code only for the server to reject it.
+    _otpController.addListener(_onInputChanged);
   }
 
   @override
   void dispose() {
-    _phoneController.removeListener(_onPhoneChanged);
+    _resendTicker?.cancel();
+    _phoneController.removeListener(_onInputChanged);
+    _otpController.removeListener(_onInputChanged);
     _phoneController.dispose();
     _otpController.dispose();
     _referralController.dispose();
     super.dispose();
   }
 
-  void _onPhoneChanged() {
+  void _onInputChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// Arms the cooldown using the window the *server* reported, rather than a
+  /// number hard-coded here: the backend owns `OTP_RESEND_COOLDOWN_SECONDS`,
+  /// and a client guessing it would either unlock early (and get rejected) or
+  /// late (and make the shopper wait for nothing).
+  void _startResendCooldown(int seconds) {
+    _resendTicker?.cancel();
+    if (seconds <= 0) {
+      setState(() => _resendAvailableAt = null);
+      return;
+    }
+    setState(() {
+      _resendAvailableAt = DateTime.now().add(Duration(seconds: seconds));
+    });
+    _resendTicker = Timer.periodic(const Duration(seconds: 1), (Timer t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      // The tick only repaints; the remaining time is recomputed from the
+      // clock, so a late or dropped tick cannot desynchronise the display.
+      setState(() {});
+      if (_resendSecondsLeft <= 0) t.cancel();
+    });
   }
 
   Future<void> _sendOtp() async {
     final String phone = _phoneController.text.trim();
     if (phone.isEmpty) return;
     await ref.read(authControllerProvider.notifier).requestOtp(phone);
-    if (mounted && ref.read(authControllerProvider).error == null) {
+    if (!mounted) return;
+    final AuthState state = ref.read(authControllerProvider);
+    if (state.error == null) {
       setState(() => _otpSent = true);
+      _startResendCooldown(state.otpRequested?.resendAfterSeconds ?? 0);
+    } else if (state.retryAfterSeconds != null) {
+      // Refused for being too soon — a code is already in flight from an
+      // earlier attempt. Run the same countdown here, on the phone step, so
+      // the wait is visibly ticking down instead of frozen at the number the
+      // server happened to quote.
+      _startResendCooldown(state.retryAfterSeconds!);
     }
+  }
+
+  /// Re-requests a code for the same number. Same endpoint as the first send —
+  /// the backend has no separate resend route; it simply re-issues and hands
+  /// back a fresh cooldown.
+  Future<void> _resendOtp() async {
+    if (_resendSecondsLeft > 0) return;
+    _otpController.clear();
+    await _sendOtp();
   }
 
   Future<void> _verifyOtp() async {
@@ -149,8 +215,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         onRevealReferral: () =>
                             setState(() => _showReferralField = true),
                         onGoogle: () => _showGoogleUnavailable(context),
-                        canContinue: _otpSent ||
-                            _phoneController.text.trim().length == 10,
+                        canContinue: _otpSent
+                            ? _otpController.text.trim().length == 6
+                            // Blocked during the cooldown: tapping Continue
+                            // then can only earn another rejection, and the
+                            // ticking message already says why.
+                            : _phoneController.text.trim().length == 10 &&
+                                _resendSecondsLeft == 0,
+                        resendSecondsLeft: _resendSecondsLeft,
+                        onResend: _resendOtp,
                       );
 
                       return Padding(
@@ -196,10 +269,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                   // Centring splits that slack above and below.
                                   child: FittedBox(
                                     fit: BoxFit.scaleDown,
-                                    alignment: Alignment.center,
-                                    child: SizedBox(
-                                      width: constraints.maxWidth - 24,
-                                      child: Column(
+                                  alignment: Alignment.center,
+                                  child: SizedBox(
+                                    // The OTP card is taller, so the FittedBox
+                                    // scales it down more. Use a smaller canvas
+                                    // for the shorter Welcome card so both
+                                    // states finish at the same visible width.
+                                    width: constraints.maxWidth *
+                                        (_otpSent ? 1.11 : 1.03),
+                                    child: Column(
                                         mainAxisSize: MainAxisSize.min,
                                         children: <Widget>[
                                           authCard,
@@ -422,6 +500,8 @@ class _AuthCard extends StatelessWidget {
     required this.onRevealReferral,
     required this.onGoogle,
     required this.canContinue,
+    required this.resendSecondsLeft,
+    required this.onResend,
   });
 
   final AuthState auth;
@@ -435,6 +515,10 @@ class _AuthCard extends StatelessWidget {
   final VoidCallback onRevealReferral;
   final VoidCallback onGoogle;
   final bool canContinue;
+
+  /// 0 once a resend is allowed.
+  final int resendSecondsLeft;
+  final Future<void> Function() onResend;
 
   @override
   Widget build(BuildContext context) {
@@ -487,13 +571,19 @@ class _AuthCard extends StatelessWidget {
             _PhoneField(controller: phoneController)
           else ...<Widget>[
             _OtpField(controller: otpController),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: onChangeNumber,
-                style: TextButton.styleFrom(padding: EdgeInsets.zero),
-                child: const Text('Change number'),
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                TextButton(
+                  onPressed: onChangeNumber,
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                  child: const Text('Change number'),
+                ),
+                _ResendControl(
+                  secondsLeft: resendSecondsLeft,
+                  onResend: onResend,
+                ),
+              ],
             ),
             if (!showReferralField)
               Align(
@@ -514,7 +604,37 @@ class _AuthCard extends StatelessWidget {
             ],
           ],
 
-          if (auth.error != null) ...<Widget>[
+          // A live cooldown outranks the server's sentence. The message was
+          // accurate the instant it was generated and stale immediately
+          // after, so once there is a running countdown it replaces the text
+          // rather than sitting beside it contradicting itself.
+          if (resendSecondsLeft > 0 && !otpSent) ...<Widget>[
+            const SizedBox(height: AppSpacing.sm),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.schedule,
+                    size: 16,
+                    color: AppColors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.xs),
+                Expanded(
+                  child: Text(
+                    'Please wait ${resendSecondsLeft}s before requesting another code.',
+                    style: AppTypography.bodyMd.copyWith(
+                      fontSize: 13,
+                      color: AppColors.onSurfaceVariant,
+                      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ] else if (auth.error != null) ...<Widget>[
             const SizedBox(height: AppSpacing.sm),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -785,30 +905,340 @@ class _PhoneField extends StatelessWidget {
   }
 }
 
-class _OtpField extends StatelessWidget {
+/// Live cooldown, flipping to a tappable "Resend code" when it expires.
+///
+/// The countdown is shown as plain text rather than a disabled button on
+/// purpose: a greyed-out button invites tapping and then ignores it, whereas
+/// a sentence that visibly counts down explains itself and needs no tap to
+/// find out.
+class _ResendControl extends StatelessWidget {
+  const _ResendControl({required this.secondsLeft, required this.onResend});
+
+  final int secondsLeft;
+  final Future<void> Function() onResend;
+
+  @override
+  Widget build(BuildContext context) {
+    if (secondsLeft <= 0) {
+      return TextButton(
+        onPressed: () => onResend(),
+        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+        child: const Text('Resend code'),
+      );
+    }
+    return Text(
+      'Resend in ${secondsLeft}s',
+      style: AppTypography.bodyMd.copyWith(
+        fontSize: 13,
+        color: AppColors.onSurfaceVariant,
+        fontFeatures: const <FontFeature>[
+          // Tabular digits: without them the proportional font re-measures as
+          // the numbers change and the label jitters sideways once a second.
+          FontFeature.tabularFigures(),
+        ],
+      ),
+    );
+  }
+}
+
+/// Six single-digit boxes, one focusable field each.
+///
+/// Built as six real fields rather than one field painted to look like six,
+/// because that is what makes a middle digit directly editable: tapping box
+/// three focuses box three, and there is no cursor arithmetic to map a tap
+/// back into a position inside a hidden string.
+///
+/// [controller] stays the single source of truth for the joined code, so the
+/// verify call and its `length != 6` guard are untouched by this widget.
+class _OtpField extends StatefulWidget {
   const _OtpField({required this.controller});
 
   final TextEditingController controller;
 
+  /// Fixed rather than a constructor parameter: the verify call's own
+  /// `otp.length != 6` guard hard-codes the same number, so making this
+  /// configurable here would only let the two drift apart.
+  static const int length = 6;
+
+  @override
+  State<_OtpField> createState() => _OtpFieldState();
+}
+
+class _OtpFieldState extends State<_OtpField> {
+  int get _length => _OtpField.length;
+
+  late final List<TextEditingController> _boxes;
+  late final List<FocusNode> _nodes;
+
+  /// Guards the two-way sync. Writing the joined value out to
+  /// [widget.controller] notifies its listeners, one of which is the pull
+  /// below — without this the widget would immediately overwrite the digit it
+  /// had just accepted.
+  bool _writingOut = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _boxes = List<TextEditingController>.generate(
+      _length,
+      (_) => TextEditingController(),
+    );
+    _nodes = List<FocusNode>.generate(_length, (int i) {
+      return FocusNode(
+        // Backspace on an already-empty box has no text change to report, so
+        // onChanged never fires and the caret would simply stall. Handling the
+        // key directly is what lets it step back and clear the previous digit.
+        onKeyEvent: (FocusNode node, KeyEvent event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.backspace &&
+              _boxes[i].text.isEmpty &&
+              i > 0) {
+            _boxes[i - 1].clear();
+            _nodes[i - 1].requestFocus();
+            _pushOut();
+            setState(() {});
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+      );
+    });
+    // Focus changes do not rebuild on their own, and the highlight is drawn
+    // from `node.hasFocus` — without this it would never move off box one.
+    for (final FocusNode n in _nodes) {
+      n.addListener(_onFocusChanged);
+    }
+    _pullIn();
+    widget.controller.addListener(_pullIn);
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_pullIn);
+    for (final TextEditingController c in _boxes) {
+      c.dispose();
+    }
+    for (final FocusNode n in _nodes) {
+      n.removeListener(_onFocusChanged);
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Mirrors the joined controller back into the boxes — this is what makes
+  /// "Change number" (which clears the controller) actually empty them.
+  void _pullIn() {
+    if (_writingOut) return;
+    final String text = widget.controller.text;
+    for (int i = 0; i < _length; i++) {
+      final String next = i < text.length ? text[i] : '';
+      if (_boxes[i].text != next) _boxes[i].text = next;
+    }
+    if (mounted) setState(() {});
+  }
+
+  void _pushOut() {
+    _writingOut = true;
+    widget.controller.text = _boxes.map((TextEditingController c) => c.text).join();
+    _writingOut = false;
+  }
+
+  /// After a digit lands, move to the next box that is still empty; if the
+  /// code is now complete, settle on the last box.
+  ///
+  /// Typing straight through, "next empty" is simply the box to the right, so
+  /// one rule covers both that and correcting a digit in the middle — after
+  /// the fix the caret jumps to whatever gap is still outstanding rather than
+  /// marching pointlessly through digits that are already right.
+  void _advanceFrom(int from) {
+    for (int i = from + 1; i < _length; i++) {
+      if (_boxes[i].text.isEmpty) {
+        _nodes[i].requestFocus();
+        return;
+      }
+    }
+    for (int i = 0; i < _length; i++) {
+      if (_boxes[i].text.isEmpty) {
+        _nodes[i].requestFocus();
+        return;
+      }
+    }
+    _nodes[_length - 1].requestFocus();
+  }
+
+  void _onChanged(int i, String value) {
+    // A paste or an SMS autofill arrives as one long string in whichever box
+    // happens to hold focus; spread it across the row instead of truncating.
+    if (value.length > 1) {
+      final String digits = value.replaceAll(RegExp(r'\D'), '');
+      for (int j = 0; j < _length; j++) {
+        _boxes[j].text = j < digits.length ? digits[j] : '';
+      }
+      _pushOut();
+      _advanceFrom(-1);
+      setState(() {});
+      return;
+    }
+
+    _pushOut();
+    if (value.isNotEmpty) _advanceFrom(i);
+    setState(() {});
+  }
+
+  void _focusBox(int index) {
+    _nodes[index].requestFocus();
+    _boxes[index].selection = TextSelection.collapsed(
+      offset: _boxes[index].text.length,
+    );
+  }
+
+  TextEditingValue _replaceExistingDigit(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    if (oldValue.text.length != 1 || newValue.text.length <= 1) {
+      return newValue;
+    }
+
+    String inserted = newValue.text;
+    if (newValue.text.startsWith(oldValue.text)) {
+      inserted = newValue.text.substring(1);
+    } else if (newValue.text.endsWith(oldValue.text)) {
+      inserted = newValue.text.substring(0, newValue.text.length - 1);
+    }
+
+    return TextEditingValue(
+      text: inserted,
+      selection: TextSelection.collapsed(offset: inserted.length),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      controller: controller,
-      keyboardType: TextInputType.number,
-      maxLength: 6,
-      autofocus: true,
-      textAlign: TextAlign.center,
-      inputFormatters: <TextInputFormatter>[
-        FilteringTextInputFormatter.digitsOnly
+    return Row(
+      children: <Widget>[
+        for (int i = 0; i < _length; i++) ...<Widget>[
+          if (i > 0) const SizedBox(width: 4),
+          Expanded(child: _OtpBox(index: i, state: this)),
+        ],
       ],
-      style: AppTypography.displayLg.copyWith(
-        fontSize: 26,
-        letterSpacing: 12,
-        fontWeight: FontWeight.w500,
+    );
+  }
+}
+
+class _OtpBox extends StatelessWidget {
+  const _OtpBox({required this.index, required this.state});
+
+  final int index;
+  final _OtpFieldState state;
+
+  static const Color _brand = Color(0xFFA81746);
+
+  @override
+  Widget build(BuildContext context) {
+    final FocusNode node = state._nodes[index];
+    final TextEditingController controller = state._boxes[index];
+    final bool focused = node.hasFocus;
+    final bool filled = controller.text.isNotEmpty;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      height: 54,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: focused
+            ? <BoxShadow>[
+                BoxShadow(
+                  color: _brand.withValues(alpha: 0.12),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
-      decoration: const InputDecoration(
-        counterText: '',
-        hintText: '······',
+      // Draw the outline above the TextField. The app-wide input theme uses
+      // a filled decoration, which otherwise paints across parts of a border
+      // placed behind the field.
+      foregroundDecoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: focused
+              ? _brand
+              : filled
+                  ? _brand.withValues(alpha: 0.30)
+                  : AppColors.outlineVariant,
+          width: focused ? 2 : 1.2,
+        ),
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          Theme(
+            data: Theme.of(context).copyWith(
+              textSelectionTheme: const TextSelectionThemeData(
+                cursorColor: Colors.transparent,
+                selectionColor: Colors.transparent,
+                selectionHandleColor: Colors.transparent,
+              ),
+            ),
+            child: TextField(
+              controller: controller,
+              focusNode: node,
+              autofocus: index == 0,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              textAlignVertical: TextAlignVertical.center,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              maxLength: 1,
+              maxLengthEnforcement: MaxLengthEnforcement.none,
+              cursorColor: Colors.transparent,
+              showCursor: false,
+              enableInteractiveSelection: false,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+                TextInputFormatter.withFunction(state._replaceExistingDigit),
+              ],
+              // The editable layer owns focus, keyboard and the full-size hit
+              // target. Its glyph is transparent; the display layer below is
+              // what guarantees exact optical centering.
+              style: const TextStyle(color: Colors.transparent),
+              decoration: const InputDecoration(
+                filled: false,
+                fillColor: Colors.transparent,
+                counterText: '',
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onTap: () => state._focusBox(index),
+              onChanged: (String value) => state._onChanged(index, value),
+            ),
+          ),
+          IgnorePointer(
+            child: Center(
+              child: Text(
+                controller.text,
+                textAlign: TextAlign.center,
+                style: AppTypography.displayLg.copyWith(
+                  fontSize: 24,
+                  height: 1,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.onSurface,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

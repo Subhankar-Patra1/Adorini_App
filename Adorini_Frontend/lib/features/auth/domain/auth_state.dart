@@ -12,6 +12,10 @@ class AuthState {
     /// Set when Google sign-in returned PHONE_REQUIRED — carry it into the OTP
     /// verify call to finish creating the account.
     this.registrationToken,
+
+    /// Set when a request was refused for being too soon — the server's own
+    /// remaining cooldown, so the UI can count it down truthfully.
+    this.retryAfterSeconds,
   });
 
   final AuthStatus status;
@@ -20,6 +24,7 @@ class AuthState {
   final PublicUser? user;
   final OtpRequested? otpRequested;
   final String? registrationToken;
+  final int? retryAfterSeconds;
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
@@ -30,6 +35,7 @@ class AuthState {
     PublicUser? user,
     OtpRequested? otpRequested,
     String? registrationToken,
+    int? retryAfterSeconds,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -39,6 +45,10 @@ class AuthState {
       user: user ?? this.user,
       otpRequested: otpRequested ?? this.otpRequested,
       registrationToken: registrationToken ?? this.registrationToken,
+      // Cleared alongside `error`, and for the same reason: it belongs to the
+      // failure that produced it, so carrying it into the next action would
+      // resurrect a cooldown the server has already let go of.
+      retryAfterSeconds: retryAfterSeconds,
     );
   }
 }

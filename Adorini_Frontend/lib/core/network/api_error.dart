@@ -25,6 +25,23 @@ String apiErrorMessage(DioException e) {
   };
 }
 
+/// Seconds the server says to wait before retrying, or null when the failure
+/// was not a rate limit.
+///
+/// The backend sends this alongside the sentence for `OTP_COOLDOWN` and the
+/// COD resend, so a countdown can be driven from the real remaining window
+/// instead of scraping the digits back out of the message — which would break
+/// the moment anyone rewords it.
+int? apiRetryAfterSeconds(DioException e) {
+  final Object? data = e.response?.data;
+  if (data is Map<String, dynamic>) {
+    final Object? seconds = data['retryAfterSeconds'];
+    if (seconds is int) return seconds;
+    if (seconds is num) return seconds.round();
+  }
+  return null;
+}
+
 /// [apiErrorMessage] for the untyped `Object error` that `AsyncValue.when`
 /// and `FutureBuilder` hand back.
 ///
