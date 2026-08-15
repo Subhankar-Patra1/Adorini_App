@@ -24,7 +24,7 @@ class EditProfileScreen extends ConsumerStatefulWidget {
   ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-enum _SaveStatus { save, saving, saved }
+enum _SaveStatus { idle, save, saving, saved }
 
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     with WidgetsBindingObserver {
@@ -83,8 +83,9 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
   String? _state;
   DateTime? _birthday;
   bool _isLoading = true;
-  _SaveStatus _saveStatus = _SaveStatus.save;
+  _SaveStatus _saveStatus = _SaveStatus.idle;
   int _editVersion = 0;
+  double _lastKeyboardInset = 0;
   bool _isUploadingPhoto = false;
 
   @override
@@ -113,9 +114,19 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
   @override
   void didChangeMetrics() {
     final views = WidgetsBinding.instance.platformDispatcher.views;
-    if (views.isNotEmpty && views.first.viewInsets.bottom == 0) {
-      FocusManager.instance.primaryFocus?.unfocus();
-    }
+    if (views.isEmpty) return;
+    final double currentInset = views.first.viewInsets.bottom;
+    final bool keyboardWasVisible = _lastKeyboardInset > 0;
+    _lastKeyboardInset = currentInset;
+    if (!keyboardWasVisible || currentInset > 0) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) return;
+      final views = WidgetsBinding.instance.platformDispatcher.views;
+      if (views.isNotEmpty && views.first.viewInsets.bottom == 0) {
+        FocusManager.instance.primaryFocus?.unfocus();
+      }
+    });
   }
 
   void _markDirty() {
@@ -569,17 +580,19 @@ class _SavePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String label = switch (status) {
+      _SaveStatus.idle => 'Save',
       _SaveStatus.save => 'Save',
-      _SaveStatus.saving => 'Saving',
+      _SaveStatus.saving => 'Save',
       _SaveStatus.saved => 'Saved',
     };
-    final bool canPress = enabled && status == _SaveStatus.save;
-    final Color backgroundColor = !enabled
+    final bool isInactive = !enabled || status == _SaveStatus.idle;
+    final bool canPress = !isInactive && status == _SaveStatus.save;
+    final Color backgroundColor = isInactive
         ? AppColors.surfaceContainerHighest
         : status == _SaveStatus.saved
             ? AppColors.primaryContainer
             : AppColors.primary;
-    final Color foregroundColor = !enabled
+    final Color foregroundColor = isInactive
         ? AppColors.onSurfaceVariant
         : status == _SaveStatus.saved
             ? AppColors.onPrimaryContainer
@@ -599,7 +612,7 @@ class _SavePill extends StatelessWidget {
               duration: const Duration(milliseconds: 180),
               child: Text(
                 label,
-                key: ValueKey<_SaveStatus>(status),
+                key: ValueKey<String>(label),
                 style: AppTypography.labelBold.copyWith(
                   color: foregroundColor,
                   letterSpacing: 0.2,
