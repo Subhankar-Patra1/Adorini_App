@@ -35,7 +35,7 @@ class ProfileScreen extends ConsumerWidget {
           AppSpacing.sm,
           AppSpacing.sm,
           AppSpacing.sm,
-          AppSpacing.lg,
+          104,
         ),
         children: <Widget>[
           _AccountHeader(profile: profile),

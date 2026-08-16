@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -29,19 +30,28 @@ enum _SaveStatus { idle, save, saving, saved }
 class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     with WidgetsBindingObserver {
   static const String _birthdayPreferenceKeyPrefix = 'profile_birthday';
+  static const String _addressDraftPreferenceKeyPrefix =
+      'profile_address_draft';
   static const List<String> _indianStates = <String>[
+    'Andaman and Nicobar Islands',
     'Andhra Pradesh',
     'Arunachal Pradesh',
     'Assam',
     'Bihar',
+    'Chandigarh',
     'Chhattisgarh',
+    'Dadra and Nagar Haveli and Daman and Diu',
+    'Delhi',
     'Goa',
     'Gujarat',
     'Haryana',
     'Himachal Pradesh',
+    'Jammu and Kashmir',
     'Jharkhand',
     'Karnataka',
     'Kerala',
+    'Ladakh',
+    'Lakshadweep',
     'Madhya Pradesh',
     'Maharashtra',
     'Manipur',
@@ -49,6 +59,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     'Mizoram',
     'Nagaland',
     'Odisha',
+    'Puducherry',
     'Punjab',
     'Rajasthan',
     'Sikkim',
@@ -58,14 +69,6 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     'Uttar Pradesh',
     'Uttarakhand',
     'West Bengal',
-    'Andaman and Nicobar Islands',
-    'Chandigarh',
-    'Dadra and Nagar Haveli and Daman and Diu',
-    'Delhi',
-    'Jammu and Kashmir',
-    'Ladakh',
-    'Lakshadweep',
-    'Puducherry',
   ];
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
@@ -162,9 +165,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
           _cityController.text = defaultAddress.city;
           _state = defaultAddress.state;
         }
-        _isLoading = false;
       });
       await _loadBirthday(user.id);
+      if (defaultAddress == null) await _loadAddressDraft(user.id);
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     } catch (error) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -199,12 +204,54 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     setState(() => _birthday = saved);
   }
 
+  String _addressDraftPreferenceKey(String userId) =>
+      '$_addressDraftPreferenceKeyPrefix:$userId';
+
+  Future<void> _loadAddressDraft(String userId) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final String? encoded =
+        preferences.getString(_addressDraftPreferenceKey(userId));
+    if (encoded == null) return;
+    try {
+      final Map<String, dynamic> draft =
+          jsonDecode(encoded) as Map<String, dynamic>;
+      _pincodeController.text = draft['pincode'] as String? ?? '';
+      _cityController.text = draft['city'] as String? ?? '';
+      _state = draft['state'] as String?;
+    } on FormatException {
+      await preferences.remove(_addressDraftPreferenceKey(userId));
+    }
+  }
+
+  bool get _hasAddressValues =>
+      _pincodeController.text.trim().isNotEmpty ||
+      _cityController.text.trim().isNotEmpty ||
+      _state != null;
+
+  Future<void> _saveAddressDraft(String userId) async {
+    final SharedPreferences preferences = await SharedPreferences.getInstance();
+    final String key = _addressDraftPreferenceKey(userId);
+    if (!_hasAddressValues) {
+      await preferences.remove(key);
+      return;
+    }
+    await preferences.setString(
+      key,
+      jsonEncode(<String, String?>{
+        'pincode': _pincodeController.text.trim(),
+        'city': _cityController.text.trim(),
+        'state': _state,
+      }),
+    );
+  }
+
   Future<void> _openBirthdaySheet() async {
     FocusManager.instance.primaryFocus?.unfocus();
     final DateTime now = DateTime.now();
     final DateTime initialDate = _birthday ?? DateTime(2000, 1, 1);
     final DateTime? selected = await showModalBottomSheet<DateTime>(
       context: context,
+      useRootNavigator: true,
       useSafeArea: true,
       requestFocus: false,
       enableDrag: false,
@@ -238,6 +285,37 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     _showMessage('Birthday saved on this device.');
   }
 
+  Future<void> _openStatePicker() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final String? selected = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      useSafeArea: true,
+      requestFocus: false,
+      backgroundColor: AppColors.surfaceContainerLowest,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(AppRadius.card),
+        ),
+      ),
+      builder: (BuildContext context) => FractionallySizedBox(
+        heightFactor: 0.76,
+        child: _StatePickerSheet(
+          states: _state == null || _indianStates.contains(_state)
+              ? _indianStates
+              : <String>[_state!, ..._indianStates],
+          selectedState: _state,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (selected == null || selected == _state) return;
+    setState(() => _state = selected);
+    _markDirty();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -269,7 +347,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
                   AppSpacing.sm,
                   AppSpacing.sm,
                   AppSpacing.sm,
-                  AppSpacing.lg,
+                  104,
                 ),
                 children: <Widget>[
                   _buildPhotoSection(),
@@ -297,63 +375,31 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
                     onBirthdayTap: _openBirthdaySheet,
                   ),
                   const SizedBox(height: AppSpacing.sm),
-                  _ProfileSection(
-                    title: 'Address',
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        if (_defaultAddress == null)
-                          Padding(
-                            padding:
-                                const EdgeInsets.only(bottom: AppSpacing.sm),
-                            child: Text(
-                              'Add a saved address first to edit delivery details here.',
-                              style: AppTypography.bodyMd.copyWith(
-                                fontSize: 13,
-                                color: AppColors.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        _ProfileTextField(
-                          controller: _pincodeController,
-                          label: 'Pincode',
-                          icon: Icons.pin_drop_outlined,
-                          enabled: _defaultAddress != null,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.next,
-                          maxLength: 6,
-                          validator: _defaultAddress == null
-                              ? null
-                              : (String? value) => RegExp(r'^[1-9][0-9]{5}$')
-                                      .hasMatch(value?.trim() ?? '')
-                                  ? null
-                                  : 'Enter a valid 6-digit PIN code',
-                        ),
-                        _ProfileTextField(
-                          controller: _cityController,
-                          label: 'City',
-                          icon: Icons.location_city_outlined,
-                          enabled: _defaultAddress != null,
-                          textInputAction: TextInputAction.next,
-                          validator: _defaultAddress == null
-                              ? null
-                              : (String? value) =>
-                                  value == null || value.trim().isEmpty
-                                      ? 'Enter your city'
-                                      : null,
-                        ),
-                        _ProfileDropdown(
-                          icon: Icons.map_outlined,
-                          label: 'State',
-                          value: _state,
-                          enabled: _defaultAddress != null,
-                          items: _stateItems,
-                          onChanged: (String? value) {
-                            setState(() => _state = value);
-                            _markDirty();
-                          },
-                        ),
-                      ],
+                  _AddressSection(
+                    hasSavedAddress: _defaultAddress != null,
+                    pincodeController: _pincodeController,
+                    cityController: _cityController,
+                    state: _state,
+                    pincodeValidator: (String? value) {
+                      if (_defaultAddress == null && !_hasAddressValues) {
+                        return null;
+                      }
+                      return RegExp(r'^[1-9][0-9]{5}$')
+                              .hasMatch(value?.trim() ?? '')
+                          ? null
+                          : 'Enter a valid 6-digit PIN code';
+                    },
+                    cityValidator: (String? value) {
+                      if (_defaultAddress == null && !_hasAddressValues) {
+                        return null;
+                      }
+                      return value == null || value.trim().isEmpty
+                          ? 'Enter your city'
+                          : null;
+                    },
+                    onStateTap: _openStatePicker,
+                    onManageAddress: () => _showMessage(
+                      'Saved Address management is coming soon.',
                     ),
                   ),
                 ],
@@ -362,68 +408,49 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
     );
   }
 
-  List<String> get _stateItems {
-    if (_state == null || _indianStates.contains(_state)) return _indianStates;
-    return <String>[_state!, ..._indianStates];
-  }
-
   Widget _buildPhotoSection() {
     final String initials = _initials(_user?.displayName ?? 'A');
     return Center(
       child: Column(
         children: <Widget>[
-          Stack(
-            clipBehavior: Clip.none,
-            children: <Widget>[
-              CircleAvatar(
-                radius: 44,
-                backgroundColor: AppColors.primaryContainer,
-                foregroundColor: AppColors.onPrimaryContainer,
-                backgroundImage: _selectedPhoto == null
-                    ? null
-                    : MemoryImage(_selectedPhoto!),
-                child: _selectedPhoto != null
-                    ? null
-                    : Text(
-                        initials,
-                        style: AppTypography.bodyMdBold.copyWith(
-                          color: AppColors.onPrimaryContainer,
-                        ),
-                      ),
-              ),
-              Positioned(
-                right: -2,
-                bottom: -2,
-                child: Material(
-                  color: AppColors.primary,
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    customBorder: const CircleBorder(),
-                    onTap: _isUploadingPhoto ? null : _choosePhotoSource,
-                    child: SizedBox.square(
-                      dimension: 34,
-                      child: _isUploadingPhoto
-                          ? const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: AppColors.onPrimary,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.camera_alt_outlined,
-                              size: 18,
-                              color: AppColors.onPrimary,
-                            ),
+          CircleAvatar(
+            radius: 44,
+            backgroundColor: AppColors.primaryContainer,
+            foregroundColor: AppColors.onPrimaryContainer,
+            backgroundImage:
+                _selectedPhoto == null ? null : MemoryImage(_selectedPhoto!),
+            child: _selectedPhoto != null
+                ? null
+                : Text(
+                    initials,
+                    style: AppTypography.bodyMdBold.copyWith(
+                      color: AppColors.onPrimaryContainer,
                     ),
+                  ),
+          ),
+          const SizedBox(height: AppSpacing.base),
+          Material(
+            color: const Color(0xFFE8E4E2),
+            borderRadius: BorderRadius.circular(AppRadius.full),
+            child: InkWell(
+              onTap: _isUploadingPhoto ? null : _choosePhotoSource,
+              borderRadius: BorderRadius.circular(AppRadius.full),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: 9,
+                ),
+                child: Text(
+                  'Change Photo',
+                  style: AppTypography.bodyMd.copyWith(
+                    fontSize: 15,
+                    color: _isUploadingPhoto
+                        ? AppColors.onSurfaceVariant
+                        : AppColors.onSurface,
                   ),
                 ),
               ),
-            ],
-          ),
-          TextButton(
-            onPressed: _isUploadingPhoto ? null : _choosePhotoSource,
-            child: Text('Change Photo', style: AppTypography.bodyMd),
+            ),
           ),
         ],
       ),
@@ -439,16 +466,28 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
   Future<void> _choosePhotoSource() async {
     final ImageSource? source = await showModalBottomSheet<ImageSource>(
       context: context,
+      useRootNavigator: true,
       backgroundColor: AppColors.surfaceContainerLowest,
-      showDragHandle: true,
+      showDragHandle: false,
       builder: (BuildContext context) => SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              const SizedBox(height: 8),
+              Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.outlineVariant,
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                ),
+              ),
+              const SizedBox(height: 10),
               Text('Choose a photo', style: AppTypography.titleMd),
-              const SizedBox(height: AppSpacing.base),
+              const SizedBox(height: AppSpacing.xs),
               ListTile(
                 leading: const Icon(Icons.photo_library_outlined),
                 title: const Text('Gallery'),
@@ -517,6 +556,10 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
   Future<void> _saveProfile() async {
     if (_saveStatus != _SaveStatus.save) return;
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_defaultAddress == null && _hasAddressValues && _state == null) {
+      _showMessage('Select a state to complete the address draft.');
+      return;
+    }
     final int savingVersion = _editVersion;
     setState(() => _saveStatus = _SaveStatus.saving);
     try {
@@ -540,6 +583,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen>
               city: _cityController.text.trim(),
               state: _state,
             );
+        final SharedPreferences preferences =
+            await SharedPreferences.getInstance();
+        await preferences.remove(_addressDraftPreferenceKey(user.id));
+      } else {
+        await _saveAddressDraft(user.id);
       }
       ref
         ..invalidate(userProfileProvider)
@@ -923,11 +971,26 @@ class _BirthdayPickerSheetState extends State<_BirthdayPickerSheet> {
   }
 }
 
-class _ProfileSection extends StatelessWidget {
-  const _ProfileSection({required this.title, required this.child});
+class _AddressSection extends StatelessWidget {
+  const _AddressSection({
+    required this.hasSavedAddress,
+    required this.pincodeController,
+    required this.cityController,
+    required this.state,
+    required this.pincodeValidator,
+    required this.cityValidator,
+    required this.onStateTap,
+    required this.onManageAddress,
+  });
 
-  final String title;
-  final Widget child;
+  final bool hasSavedAddress;
+  final TextEditingController pincodeController;
+  final TextEditingController cityController;
+  final String? state;
+  final FormFieldValidator<String> pincodeValidator;
+  final FormFieldValidator<String> cityValidator;
+  final VoidCallback onStateTap;
+  final VoidCallback onManageAddress;
 
   @override
   Widget build(BuildContext context) {
@@ -936,27 +999,358 @@ class _ProfileSection extends StatelessWidget {
       borderRadius: BorderRadius.circular(AppRadius.card),
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.md,
-          AppSpacing.sm,
-          AppSpacing.md,
-          AppSpacing.md,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.base),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              title,
-              style: AppTypography.titleMd.copyWith(
-                fontSize: 17,
-                height: 1.35,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+              child: Text(
+                'Address',
+                style: AppTypography.titleMd.copyWith(
+                  fontSize: 15.5,
+                  height: 1.3,
+                  color: AppColors.primary,
+                ),
               ),
             ),
-            const SizedBox(height: AppSpacing.xs),
-            child,
+            const SizedBox(height: AppSpacing.base),
+            _AddressFieldRow(
+              icon: Icons.pin_outlined,
+              iconColor: const Color(0xFFEC9415),
+              controller: pincodeController,
+              hintText: 'Pincode',
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.next,
+              maxLength: 6,
+              validator: pincodeValidator,
+            ),
+            const _AddressDivider(),
+            _AddressFieldRow(
+              icon: Icons.location_city_outlined,
+              iconColor: const Color(0xFF289BD3),
+              controller: cityController,
+              hintText: 'City',
+              textInputAction: TextInputAction.done,
+              validator: cityValidator,
+            ),
+            const _AddressDivider(),
+            GestureDetector(
+              onTap: onStateTap,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                  vertical: 10,
+                ),
+                child: Row(
+                  children: <Widget>[
+                    const _AddressIcon(
+                      icon: Icons.map_outlined,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(width: AppSpacing.sm),
+                    Expanded(
+                      child: Text(
+                        state ?? 'State',
+                        style: AppTypography.bodyMd.copyWith(
+                          fontSize: 17,
+                          color: state == null
+                              ? AppColors.onSurfaceVariant.withValues(
+                                  alpha: 0.62,
+                                )
+                              : AppColors.onSurface,
+                        ),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 22,
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (!hasSavedAddress)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                  AppSpacing.md,
+                  AppSpacing.xs,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'These details will be kept locally until you add a full saved address.',
+                      style: AppTypography.bodyMd.copyWith(
+                        fontSize: 14,
+                        color: AppColors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.base),
+                    TextButton.icon(
+                      onPressed: onManageAddress,
+                      icon: const Icon(Icons.add_location_alt_outlined),
+                      label: const Text('MANAGE SAVED ADDRESS'),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AddressFieldRow extends StatelessWidget {
+  const _AddressFieldRow({
+    required this.icon,
+    required this.iconColor,
+    required this.controller,
+    required this.hintText,
+    required this.textInputAction,
+    required this.validator,
+    this.keyboardType,
+    this.maxLength,
+  });
+
+  final IconData icon;
+  final Color iconColor;
+  final TextEditingController controller;
+  final String hintText;
+  final TextInputType? keyboardType;
+  final TextInputAction textInputAction;
+  final int? maxLength;
+  final FormFieldValidator<String> validator;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.xs),
+            child: _AddressIcon(icon: icon, color: iconColor),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: TextFormField(
+              controller: controller,
+              keyboardType: keyboardType,
+              textInputAction: textInputAction,
+              maxLength: maxLength,
+              validator: validator,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              onTapOutside: (PointerDownEvent event) =>
+                  FocusScope.of(context).unfocus(),
+              style: AppTypography.bodyMd.copyWith(fontSize: 17),
+              decoration: InputDecoration(
+                hintText: hintText,
+                hintStyle: AppTypography.bodyMd.copyWith(
+                  fontSize: 17,
+                  color: AppColors.onSurfaceVariant.withValues(alpha: 0.62),
+                ),
+                counterText: '',
+                errorStyle: AppTypography.bodyMd.copyWith(
+                  fontSize: 11,
+                  height: 1,
+                  color: AppColors.error,
+                ),
+                filled: false,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 5),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                errorBorder: InputBorder.none,
+                focusedErrorBorder: InputBorder.none,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddressIcon extends StatelessWidget {
+  const _AddressIcon({required this.icon, required this.color});
+
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: SizedBox.square(
+        dimension: 28,
+        child: Icon(icon, size: 18, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _AddressDivider extends StatelessWidget {
+  const _AddressDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Divider(
+      height: 8,
+      thickness: 0.5,
+      indent: 56,
+      endIndent: AppSpacing.md,
+      color: AppColors.divider,
+    );
+  }
+}
+
+class _StatePickerSheet extends StatefulWidget {
+  const _StatePickerSheet({
+    required this.states,
+    required this.selectedState,
+  });
+
+  final List<String> states;
+  final String? selectedState;
+
+  @override
+  State<_StatePickerSheet> createState() => _StatePickerSheetState();
+}
+
+class _StatePickerSheetState extends State<_StatePickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> filteredStates = widget.states
+        .where(
+          (String state) => state.toLowerCase().contains(_query.toLowerCase()),
+        )
+        .toList();
+    return Column(
+      children: <Widget>[
+        const SizedBox(height: AppSpacing.base),
+        Container(
+          width: 38,
+          height: 4,
+          decoration: BoxDecoration(
+            color: AppColors.outlineVariant,
+            borderRadius: BorderRadius.circular(AppRadius.full),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Select State',
+                style: AppTypography.titleMd.copyWith(
+                  color: AppColors.primary,
+                ),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              TextField(
+                controller: _searchController,
+                onChanged: (String value) => setState(() => _query = value),
+                onTapOutside: (PointerDownEvent event) =>
+                    FocusScope.of(context).unfocus(),
+                style: AppTypography.bodyMd,
+                decoration: InputDecoration(
+                  hintText: 'Search states',
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(left: 14, right: 7),
+                    child: Center(
+                      widthFactor: 1,
+                      heightFactor: 1,
+                      child: Icon(Icons.search, size: 20),
+                    ),
+                  ),
+                  prefixIconConstraints: const BoxConstraints(
+                    minWidth: 0,
+                    minHeight: 0,
+                  ),
+                  filled: true,
+                  fillColor: AppColors.surfaceContainer,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 13,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.full),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: filteredStates.isEmpty
+              ? Center(
+                  child: Text(
+                    'No state found',
+                    style: AppTypography.bodyMd.copyWith(
+                      color: AppColors.onSurfaceVariant,
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  itemCount: filteredStates.length,
+                  itemBuilder: (BuildContext context, int index) {
+                    final String state = filteredStates[index];
+                    final bool selected = state == widget.selectedState;
+                    return ListTile(
+                      title: Text(state, style: AppTypography.bodyMd),
+                      trailing: selected
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: AppColors.primary,
+                            )
+                          : null,
+                      onTap: () => Navigator.pop(context, state),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
@@ -1066,83 +1460,6 @@ class _NameField extends StatelessWidget {
         errorBorder: InputBorder.none,
         focusedErrorBorder: InputBorder.none,
       ),
-    );
-  }
-}
-
-class _ProfileTextField extends StatelessWidget {
-  const _ProfileTextField({
-    required this.controller,
-    required this.label,
-    this.icon,
-    this.enabled = true,
-    this.keyboardType,
-    this.textInputAction,
-    this.maxLength,
-    this.validator,
-  });
-
-  final TextEditingController controller;
-  final String label;
-  final IconData? icon;
-  final bool enabled;
-  final TextInputType? keyboardType;
-  final TextInputAction? textInputAction;
-  final int? maxLength;
-  final FormFieldValidator<String>? validator;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: controller,
-      onTapOutside: (PointerDownEvent event) =>
-          FocusScope.of(context).unfocus(),
-      enabled: enabled,
-      keyboardType: keyboardType,
-      textInputAction: textInputAction,
-      maxLength: maxLength,
-      validator: validator,
-      style: AppTypography.bodyMd,
-      decoration: _fieldDecoration(label: label, icon: icon).copyWith(
-        counterText: '',
-      ),
-    );
-  }
-}
-
-class _ProfileDropdown extends StatelessWidget {
-  const _ProfileDropdown({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-    this.enabled = true,
-  });
-
-  final IconData icon;
-  final String label;
-  final String? value;
-  final List<String> items;
-  final ValueChanged<String?> onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      isExpanded: true,
-      decoration: _fieldDecoration(label: label, icon: icon),
-      style: AppTypography.bodyMd,
-      items: items
-          .map(
-            (String item) => DropdownMenuItem<String>(
-              value: item,
-              child: Text(item),
-            ),
-          )
-          .toList(),
-      onChanged: enabled ? onChanged : null,
     );
   }
 }
@@ -1536,37 +1853,4 @@ class _InfoIcon extends StatelessWidget {
       ),
     );
   }
-}
-
-InputDecoration _fieldDecoration({required String label, IconData? icon}) {
-  const UnderlineInputBorder border = UnderlineInputBorder(
-    borderSide: BorderSide(color: AppColors.divider, width: 0.5),
-  );
-  return InputDecoration(
-    labelText: label,
-    labelStyle: AppTypography.bodyMd.copyWith(
-      fontSize: 14,
-      color: AppColors.onSurfaceVariant,
-    ),
-    floatingLabelStyle: AppTypography.bodyMd.copyWith(
-      fontSize: 14,
-      color: AppColors.primary,
-    ),
-    errorStyle: AppTypography.bodyMd.copyWith(
-      fontSize: 12,
-      color: AppColors.error,
-    ),
-    prefixIcon:
-        icon == null ? null : Icon(icon, size: 20, color: AppColors.primary),
-    prefixIconConstraints: const BoxConstraints(minWidth: 34),
-    filled: false,
-    isDense: true,
-    contentPadding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
-    border: border,
-    enabledBorder: border,
-    disabledBorder: border,
-    focusedBorder: const UnderlineInputBorder(
-      borderSide: BorderSide(color: AppColors.primary, width: 1),
-    ),
-  );
 }
