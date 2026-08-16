@@ -5,6 +5,7 @@ import '../../../core/network/api_error.dart';
 import '../../../core/network/dio_client.dart';
 import '../../../core/storage/token_storage.dart';
 import '../data/auth_api.dart';
+import '../data/google_sign_in_service.dart';
 import 'auth_state.dart';
 
 final Provider<AuthApi> authApiProvider = Provider<AuthApi>(
@@ -118,6 +119,10 @@ class AuthController extends Notifier<AuthState> {
       }
     }
     await _tokenStorage.clear();
+    // Drop Google's cached account too, so the next sign-in shows the picker.
+    // Without this the plugin silently reuses the last account, and a shopper
+    // signing out to switch accounts lands right back in the one they left.
+    await ref.read(googleSignInServiceProvider).signOut();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 }

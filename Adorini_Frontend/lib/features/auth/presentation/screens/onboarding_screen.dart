@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
+import '../../data/google_sign_in_service.dart';
 import '../../domain/auth_controller.dart';
 import '../../domain/auth_state.dart';
 
@@ -230,7 +231,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                         }),
                         onRevealReferral: () =>
                             setState(() => _showReferralField = true),
-                        onGoogle: () => _showGoogleUnavailable(context),
+                        onGoogle: _signInWithGoogle,
                         canContinue: _otpSent
                             ? _otpController.text.trim().length == 6
                             // Blocked during the cooldown: tapping Continue
@@ -327,10 +328,52 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     );
   }
 
-  void _showGoogleUnavailable(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Google sign-in will be available soon.')),
-    );
+  /// Google sign-in.
+  ///
+  /// Three outcomes, and only one of them is an error:
+  ///
+  /// * **Authenticated** — a known Google account. Straight to `/home`.
+  /// * **Phone required** — a new account. `signInWithGoogle` returns `false`
+  ///   here, which is *not* a failure: it has stored a `registrationToken` in
+  ///   `AuthState`, and the OTP flow already on this screen carries that token
+  ///   into `/auth/otp/verify` to finish creating the account. So the screen
+  ///   stays put and asks for a number. Treating that `false` as an error would
+  ///   strand every new Google user on a dead end.
+  /// * **Dismissed** — a null token. The shopper closed the sheet; saying
+  ///   anything about it would be scolding them for changing their mind.
+  Future<void> _signInWithGoogle() async {
+    final String? idToken;
+    try {
+      idToken = await ref.read(googleSignInServiceProvider).signIn();
+    } on GoogleSignInUnavailable catch (e) {
+      if (mounted) _showMessage(e.message);
+      return;
+    }
+    if (idToken == null || !mounted) return;
+
+    final bool signedIn =
+        await ref.read(authControllerProvider.notifier).signInWithGoogle(idToken);
+    if (!mounted) return;
+
+    if (signedIn) {
+      context.go('/home');
+      return;
+    }
+
+    // The controller reports a real failure through `state.error` and a
+    // phone-required handoff through `registrationToken`, so read which of the
+    // two happened rather than inferring it from the `false`.
+    final AuthState state = ref.read(authControllerProvider);
+    if (state.registrationToken != null) {
+      _showMessage('Almost there — add your phone number to finish signing up.');
+    } else if (state.error != null) {
+      _showMessage(state.error!);
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
@@ -741,12 +784,12 @@ class _AuthCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                // Styled as pending, not ready. The plugin and OAuth client
-                // are not configured, so `onGoogle` only explains that —
-                // presenting it identically to a working control was the
-                // same kind of promise the removed auth-bypass button made.
-                // It stays tappable so the tap is answered rather than
-                // swallowed by a dead button.
+                // Live: `onGoogle` runs the real account picker.
+                //
+                // Kept in the muted outline treatment rather than promoted to a
+                // filled button. Phone/OTP is the primary path — it is the only
+                // one that works for a shopper without a Google account, and
+                // the backend can end up asking for a number anyway.
                 OutlinedButton(
                   onPressed: onGoogle,
                   style: OutlinedButton.styleFrom(

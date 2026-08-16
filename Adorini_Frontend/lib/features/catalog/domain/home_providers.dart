@@ -60,8 +60,8 @@ final Provider<List<HeroSlide>> heroSlidesProvider = Provider<List<HeroSlide>>(
   (Ref ref) => const <HeroSlide>[
     HeroSlide(
       eyebrow: 'NEW SEASON',
-      headline: 'Handpicked\nethnic edits',
-      cta: 'Explore new arrivals',
+      headline: 'Heritage,\nreimagined',
+      cta: 'Shop the editorial edit',
       filters: CatalogFilters(),
       imageAsset: 'assets/images/onboarding_fashion_collage.webp',
     ),
@@ -119,6 +119,30 @@ final FutureProvider<List<ProductSummary>> dealsProvider =
       .toList();
 });
 
+/// Products for the Home screen's "Trending now" rail.
+///
+/// The API has no popularity ranking yet, so reduced products lead the rail
+/// and recent products fill any remaining spaces. This keeps the section
+/// useful without inventing sales data on the client.
+final FutureProvider<List<ProductSummary>> trendingNowProvider =
+    FutureProvider<List<ProductSummary>>((Ref ref) async {
+  final ProductPage page = await ref.watch(catalogApiProvider).listProducts(
+        filters: const CatalogFilters(sort: CatalogSort.newest),
+        limit: 40,
+      );
+  final List<ProductSummary> discounted = page.items
+      .where((ProductSummary product) => product.isDiscounted)
+      .toList();
+  final Set<String> included =
+      discounted.map((ProductSummary product) => product.slug).toSet();
+  return <ProductSummary>[
+    ...discounted,
+    ...page.items.where(
+      (ProductSummary product) => !included.contains(product.slug),
+    ),
+  ].take(_railLength).toList();
+});
+
 /// The budget rail. Cheapest first — the rail's promise is the price, so
 /// leading with the newest instead would bury the cheapest pieces off-screen.
 final FutureProvider<List<ProductSummary>> budgetPicksProvider =
@@ -172,11 +196,10 @@ class HomeFeedController extends AsyncNotifier<List<ProductSummary>> {
 
     _isLoadingMore = true;
     try {
-      final ProductPage page =
-          await ref.read(catalogApiProvider).listProducts(
-                filters: const CatalogFilters(sort: CatalogSort.newest),
-                cursor: _nextCursor,
-              );
+      final ProductPage page = await ref.read(catalogApiProvider).listProducts(
+            filters: const CatalogFilters(sort: CatalogSort.newest),
+            cursor: _nextCursor,
+          );
       _nextCursor = page.nextCursor;
       state = AsyncData<List<ProductSummary>>(
         <ProductSummary>[...current, ...page.items],

@@ -7,7 +7,6 @@ import '../../../../core/network/api_error.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/theme/app_typography.dart';
-import '../../../../core/utils/money.dart';
 import '../../../cart/data/cart_api.dart';
 import '../../../cart/domain/cart_controller.dart';
 import '../../data/catalog_api.dart';
@@ -84,8 +83,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // while four requests are still in flight.
     ref.invalidate(categoriesProvider);
     ref.invalidate(newArrivalsProvider);
-    ref.invalidate(dealsProvider);
-    ref.invalidate(budgetPicksProvider);
+    ref.invalidate(trendingNowProvider);
     ref.invalidate(homeFeedProvider);
     await Future.wait<void>(<Future<void>>[
       ref.read(newArrivalsProvider.future),
@@ -99,7 +97,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final int cartCount = cart.valueOrNull?.itemCount ?? 0;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.surfaceContainerLow,
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
@@ -110,58 +108,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               cartCount: cartCount,
               onSubmitted: _search,
               onCart: () => context.push('/cart'),
-              onWishlist: () => context.go('/wishlist'),
             ),
-            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
+            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xs)),
             const SliverToBoxAdapter(child: HeroCarousel()),
             SliverToBoxAdapter(
               child: SectionHeader(
-                title: 'Categories',
+                title: 'Shop by category',
                 onSeeAll: () => _openCatalog(const CatalogFilters()),
               ),
             ),
             const SliverToBoxAdapter(child: CategoryRail()),
-            const SliverToBoxAdapter(child: TrustStrip()),
-
             _railSliver(
               provider: newArrivalsProvider,
-              title: 'New arrivals',
-              subtitle: 'Fresh off the loom',
+              title: 'New this week',
+              subtitle: 'The latest pieces in the boutique',
+              compact: true,
               onSeeAll: () =>
                   _openCatalog(const CatalogFilters(sort: CatalogSort.newest)),
             ),
-
-            // Hidden entirely when nothing is discounted, rather than shown
-            // empty under its heading. A "Deals" title over a blank strip
-            // reads as a broken page; a page without the section reads as a
-            // shop that simply has no sale on.
             _railSliver(
-              provider: dealsProvider,
-              title: 'Price drops',
-              subtitle: 'Reduced this week',
-              onSeeAll: null,
+              provider: trendingNowProvider,
+              title: 'Trending now',
+              subtitle: 'Styles shoppers are noticing',
+              onSeeAll: () => _openCatalog(const CatalogFilters()),
             ),
-
-            const SliverToBoxAdapter(child: ReelsStrip()),
-
-            _railSliver(
-              provider: budgetPicksProvider,
-              title: 'Under ${budgetRailCeilingPaise.asRupees}',
-              subtitle: 'Everyday edits, easy prices',
-              onSeeAll: () => _openCatalog(
-                const CatalogFilters(
-                  maxPricePaise: budgetRailCeilingPaise,
-                  sort: CatalogSort.priceAsc,
-                ),
+            const SliverToBoxAdapter(
+              child: SectionHeader(
+                title: 'For you',
+                subtitle: 'A personal edit from Adorini',
               ),
             ),
-
-            const SliverToBoxAdapter(child: EditorialPanel()),
-            const SliverToBoxAdapter(
-              child: SectionHeader(title: 'More to explore'),
-            ),
             ..._feedSlivers(),
-            const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
+            const SliverToBoxAdapter(child: SizedBox(height: 112)),
           ],
         ),
       ),
@@ -178,6 +156,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     required String title,
     required String? subtitle,
     required VoidCallback? onSeeAll,
+    bool compact = false,
   }) {
     return Consumer(
       builder: (BuildContext context, WidgetRef ref, Widget? child) {
@@ -189,8 +168,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: <Widget>[
                 const SectionHeaderSkeleton(),
                 RailSkeleton(
-                  cardWidth: ProductRail.cardWidth,
-                  height: ProductRail.heightFor(context),
+                  cardWidth: compact
+                      ? ProductRail.compactCardWidth
+                      : ProductRail.cardWidth,
+                  height: compact
+                      ? ProductRail.compactHeight
+                      : ProductRail.heightFor(context),
                 ),
               ],
             ),
@@ -202,6 +185,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               title: title,
               subtitle: subtitle,
               products: items,
+              compact: compact,
               onSeeAll: onSeeAll,
             ),
           ),
@@ -251,75 +235,117 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-/// Search bar, wishlist and bag.
+/// Editorial brand header, search and bag.
 ///
-/// `floating` with `snap`: the bar leaves as the shopper scrolls into the
-/// catalog and returns on the first upward flick, so search is always one
-/// gesture away without permanently spending a strip of a phone screen.
+/// Pinned so the brand header, bag and search remain available while the
+/// editorial Home sections scroll underneath.
 class _HomeAppBar extends StatelessWidget {
   const _HomeAppBar({
     required this.controller,
     required this.cartCount,
     required this.onSubmitted,
     required this.onCart,
-    required this.onWishlist,
   });
 
   final TextEditingController controller;
   final int cartCount;
   final ValueChanged<String> onSubmitted;
   final VoidCallback onCart;
-  final VoidCallback onWishlist;
 
   @override
   Widget build(BuildContext context) {
     return SliverAppBar(
-      floating: true,
-      snap: true,
+      pinned: true,
       backgroundColor: AppColors.surface,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(AppRadius.card),
+        ),
+      ),
+      toolbarHeight: 66,
       titleSpacing: AppSpacing.containerMargin,
-      title: SizedBox(
-        height: 44,
-        child: TextField(
-          controller: controller,
-          textInputAction: TextInputAction.search,
-          onSubmitted: onSubmitted,
-          style: AppTypography.bodyMd.copyWith(fontSize: 14),
-          decoration: InputDecoration(
-            hintText: 'Search kurtas, sarees, co-ords…',
-            hintStyle: AppTypography.bodyMd.copyWith(
-              fontSize: 13,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            'Adorini',
+            style: AppTypography.headlineLgMobile.copyWith(
+              fontSize: 27,
+              color: AppColors.primary,
+            ),
+          ),
+          Text(
+            'Find your signature look',
+            style: AppTypography.bodyMd.copyWith(
+              fontSize: 11,
               color: AppColors.onSurfaceVariant,
             ),
-            prefixIcon: const Icon(Icons.search,
-                size: 20, color: AppColors.onSurfaceVariant),
-            filled: true,
-            fillColor: AppColors.surfaceContainerLow,
-            isDense: true,
-            contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: const BorderSide(color: AppColors.outlineVariant),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: const BorderSide(color: AppColors.outlineVariant),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(999),
-              borderSide: const BorderSide(color: AppColors.primary),
+          ),
+        ],
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(50),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            0,
+            AppSpacing.md,
+            6,
+          ),
+          child: SizedBox(
+            height: 44,
+            child: TextField(
+              controller: controller,
+              textInputAction: TextInputAction.search,
+              onSubmitted: onSubmitted,
+              onTapOutside: (PointerDownEvent event) =>
+                  FocusScope.of(context).unfocus(),
+              style: AppTypography.bodyMd.copyWith(fontSize: 14),
+              decoration: InputDecoration(
+                hintText: 'Search styles, brands and more',
+                hintStyle: AppTypography.bodyMd.copyWith(
+                  fontSize: 13,
+                  color: AppColors.onSurfaceVariant,
+                ),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  size: 20,
+                  color: AppColors.onSurfaceVariant,
+                ),
+                suffixIcon: const Icon(
+                  Icons.tune,
+                  size: 19,
+                  color: AppColors.primary,
+                ),
+                filled: true,
+                fillColor: AppColors.surfaceContainerLowest,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  borderSide: const BorderSide(
+                    color: AppColors.outlineVariant,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  borderSide: const BorderSide(
+                    color: AppColors.outlineVariant,
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.full),
+                  borderSide: const BorderSide(color: AppColors.primary),
+                ),
+              ),
             ),
           ),
         ),
       ),
       actions: <Widget>[
-        IconButton(
-          onPressed: onWishlist,
-          icon: const Icon(Icons.favorite_border),
-          tooltip: 'Wishlist',
-        ),
         IconButton(
           onPressed: onCart,
           tooltip: 'Bag',

@@ -19,14 +19,14 @@ import '../../../domain/home_providers.dart';
 class HeroCarousel extends ConsumerStatefulWidget {
   const HeroCarousel({super.key});
 
-  static const double height = 208;
+  static const double height = 156;
 
   @override
   ConsumerState<HeroCarousel> createState() => _HeroCarouselState();
 }
 
 class _HeroCarouselState extends ConsumerState<HeroCarousel> {
-  final PageController _controller = PageController(viewportFraction: 0.9);
+  final PageController _controller = PageController(viewportFraction: 0.94);
   Timer? _autoAdvance;
   int _page = 0;
   bool _userTookOver = false;
@@ -89,7 +89,7 @@ class _HeroCarouselState extends ConsumerState<HeroCarousel> {
             ),
           ),
         ),
-        const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: 6),
         _Dots(count: slides.length, active: _page),
       ],
     );
@@ -109,8 +109,7 @@ class _HeroSlideCard extends StatelessWidget {
     // plain panel it stays in the theme's own ink. Two palettes rather than
     // one set of light text everywhere, because white on `primaryContainer`
     // is barely 1.4:1 — legible in a mockup, unreadable in daylight.
-    final Color ink =
-        hasImage ? Colors.white : AppColors.onPrimaryContainer;
+    final Color ink = hasImage ? Colors.white : AppColors.onPrimaryContainer;
     final Color inkSoft = hasImage
         ? Colors.white.withValues(alpha: 0.86)
         : AppColors.onSurfaceVariant;
@@ -120,7 +119,7 @@ class _HeroSlideCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(AppRadius.md),
           gradient: hasImage
               ? null
               : const LinearGradient(
@@ -156,7 +155,7 @@ class _HeroSlideCard extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -173,11 +172,12 @@ class _HeroSlideCard extends StatelessWidget {
                   Text(
                     slide.headline,
                     style: AppTypography.headlineLgMobile.copyWith(
+                      fontSize: 21,
                       color: ink,
-                      height: 1.15,
+                      height: 1.08,
                     ),
                   ),
-                  const SizedBox(height: AppSpacing.sm),
+                  const SizedBox(height: AppSpacing.base),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[

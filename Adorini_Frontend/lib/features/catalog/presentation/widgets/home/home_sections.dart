@@ -25,8 +25,8 @@ import 'product_rail.dart';
 class CategoryRail extends ConsumerWidget {
   const CategoryRail({super.key});
 
-  static const double _diameter = 66;
-  static const double _height = 108;
+  static const double _diameter = 54;
+  static const double _height = 80;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -42,7 +42,20 @@ class CategoryRail extends ConsumerWidget {
       // the shopper's attention on something they lose nothing by missing.
       error: (Object e, StackTrace s) => const SizedBox.shrink(),
       data: (List<Category> items) {
-        if (items.isEmpty) return const SizedBox.shrink();
+        const List<Category> curated = <Category>[
+          Category(slug: 'kurtas', name: 'Kurtas'),
+          Category(slug: 'suits', name: 'Suits'),
+          Category(slug: 'dresses', name: 'Dresses'),
+          Category(slug: 'co-ords', name: 'Co-ords'),
+          Category(slug: 'tops', name: 'Tops'),
+        ];
+        final List<Category> resolved = curated.map((Category fallback) {
+          final String target = _normalizedName(fallback.name);
+          for (final Category category in items) {
+            if (_normalizedName(category.name) == target) return category;
+          }
+          return fallback;
+        }).toList();
         // The "New" tile is prepended rather than being a category of its own,
         // so index 0 is the showcase and every index after it is offset by
         // one. Kept as an offset rather than a synthetic `Category` because a
@@ -52,16 +65,16 @@ class CategoryRail extends ConsumerWidget {
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.containerMargin,
+              horizontal: AppSpacing.md,
             ),
-            itemCount: items.length + 1,
+            itemCount: resolved.length + 1,
             separatorBuilder: (BuildContext c, int i) =>
-                const SizedBox(width: AppSpacing.md),
+                const SizedBox(width: 6),
             itemBuilder: (BuildContext context, int index) {
               if (index == 0) {
                 return _NewTile(onTap: () => context.push('/new'));
               }
-              final Category category = items[index - 1];
+              final Category category = resolved[index - 1];
               return _CategoryTile(
                 category: category,
                 onTap: () {
@@ -76,6 +89,9 @@ class CategoryRail extends ConsumerWidget {
       },
     );
   }
+
+  static String _normalizedName(String value) =>
+      value.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
 }
 
 /// The showcase entry point, sitting first in the category rail.
@@ -93,7 +109,7 @@ class _NewTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width: CategoryRail._diameter + 12,
+        width: CategoryRail._diameter + 4,
         child: Column(
           children: <Widget>[
             Container(
@@ -118,7 +134,7 @@ class _NewTile extends StatelessWidget {
                 color: AppColors.primary,
               ),
             ),
-            const SizedBox(height: AppSpacing.base),
+            const SizedBox(height: AppSpacing.xs),
             Text(
               'New',
               maxLines: 1,
@@ -146,7 +162,7 @@ class _CategoryTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: SizedBox(
-        width: CategoryRail._diameter + 12,
+        width: CategoryRail._diameter + 4,
         child: Column(
           children: <Widget>[
             Container(
@@ -166,7 +182,7 @@ class _CategoryTile extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: AppSpacing.base),
+            const SizedBox(height: AppSpacing.xs),
             Text(
               category.name,
               maxLines: 1,
