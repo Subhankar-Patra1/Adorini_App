@@ -8,6 +8,7 @@ import '../features/auth/presentation/screens/onboarding_screen.dart';
 import '../features/catalog/presentation/screens/home_screen.dart';
 import '../features/catalog/presentation/screens/new_showcase_screen.dart';
 import '../features/catalog/presentation/screens/product_list_screen.dart';
+import '../features/catalog/presentation/screens/search_screen.dart';
 import '../features/catalog/presentation/screens/wishlist_screen.dart';
 import '../features/content_videos/presentation/screens/video_feed_screen.dart';
 import '../features/pdp/presentation/screens/pdp_screen.dart';
@@ -72,6 +73,7 @@ bool _isGuestBrowsable(String location) {
     '/catalog',
     '/videos',
     '/new',
+    '/search',
   ];
   return browsable.any(location.startsWith);
 }
@@ -239,6 +241,11 @@ final Provider<GoRouter> appRouterProvider = Provider<GoRouter>((Ref ref) {
         path: '/new',
         builder: (BuildContext context, GoRouterState state) =>
             const NewShowcaseScreen(),
+      ),
+      GoRoute(
+        path: '/search',
+        builder: (BuildContext context, GoRouterState state) =>
+            const SearchScreen(),
       ),
       GoRoute(
         path: '/cart',

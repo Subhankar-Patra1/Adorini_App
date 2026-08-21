@@ -11,72 +11,63 @@ import '../../../../content_videos/domain/videos_providers.dart';
 import '../../../data/catalog_api.dart';
 import '../../../data/product_model.dart';
 import '../../../domain/catalog_providers.dart';
+import '../../../domain/home_providers.dart';
 import '../product_card.dart';
 import 'home_skeletons.dart';
 import 'product_rail.dart';
 
-/// Circular category shortcuts.
+/// Compact, image-led category shortcuts.
 ///
-/// The tiles carry the category's initial rather than a photograph, because
-/// `Category` is `{slug, name}` — the API has no image to show. A monogram is
-/// the honest version of this component: it reads as a considered choice,
-/// where an empty grey circle reads as a broken image. Adding `imageUrl` to
-/// the categories endpoint is what would upgrade these to the real thing.
+/// `Category` itself has no image, so the first available Home-feed product in
+/// each category supplies its thumbnail. Categories stay in a compact,
+/// horizontally scrollable two-row grid so the Home page does not grow taller
+/// as the catalog expands.
 class CategoryRail extends ConsumerWidget {
   const CategoryRail({super.key});
 
-  static const double _diameter = 54;
-  static const double _height = 80;
+  static const double _diameter = 60;
+  static const double _itemWidth = 76;
+  static const double _tileHeight = 88;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<List<Category>> categories = ref.watch(categoriesProvider);
+    final List<ProductSummary> homeProducts =
+        ref.watch(homeFeedProvider).valueOrNull ?? <ProductSummary>[];
 
     return categories.when(
       loading: () => const SizedBox(
-        height: _height,
-        child: RailSkeleton(cardWidth: _diameter, height: _diameter),
+        height: _tileHeight * 2 + 8,
+        child: RailSkeleton(cardWidth: _itemWidth, height: _diameter),
       ),
       // Silent on failure. The rail is a shortcut to a tab that is one tap
       // away in the bottom bar regardless, so an error card here would spend
       // the shopper's attention on something they lose nothing by missing.
       error: (Object e, StackTrace s) => const SizedBox.shrink(),
-      data: (List<Category> items) {
-        const List<Category> curated = <Category>[
-          Category(slug: 'kurtas', name: 'Kurtas'),
-          Category(slug: 'suits', name: 'Suits'),
-          Category(slug: 'dresses', name: 'Dresses'),
-          Category(slug: 'co-ords', name: 'Co-ords'),
-          Category(slug: 'tops', name: 'Tops'),
-        ];
-        final List<Category> resolved = curated.map((Category fallback) {
-          final String target = _normalizedName(fallback.name);
-          for (final Category category in items) {
-            if (_normalizedName(category.name) == target) return category;
-          }
-          return fallback;
-        }).toList();
-        // The "New" tile is prepended rather than being a category of its own,
-        // so index 0 is the showcase and every index after it is offset by
-        // one. Kept as an offset rather than a synthetic `Category` because a
-        // fake slug would be a real query the moment someone tapped it.
+      data: (List<Category> resolved) {
         return SizedBox(
-          height: _height,
-          child: ListView.separated(
+          height: _tileHeight * 2 + 2,
+          child: GridView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppSpacing.md,
+            padding: const EdgeInsets.fromLTRB(6, 0, 6, 1),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisExtent: 83,
+              mainAxisSpacing: 1,
+              crossAxisSpacing: 0,
             ),
             itemCount: resolved.length + 1,
-            separatorBuilder: (BuildContext c, int i) =>
-                const SizedBox(width: 6),
             itemBuilder: (BuildContext context, int index) {
               if (index == 0) {
-                return _NewTile(onTap: () => context.push('/new'));
+                return _NewTile(
+                  imageUrl: _firstPreview(homeProducts),
+                  onTap: () => context.push('/new'),
+                );
               }
               final Category category = resolved[index - 1];
               return _CategoryTile(
                 category: category,
+                imageUrl: _previewFor(category.slug, homeProducts),
                 onTap: () {
                   ref.read(catalogFiltersProvider.notifier).state =
                       CatalogFilters(category: category.slug);
@@ -90,61 +81,91 @@ class CategoryRail extends ConsumerWidget {
     );
   }
 
-  static String _normalizedName(String value) =>
-      value.toLowerCase().replaceAll(' ', '').replaceAll('-', '');
+  static String? _previewFor(
+    String categorySlug,
+    List<ProductSummary> products,
+  ) {
+    for (final ProductSummary product in products) {
+      if (product.categorySlug == categorySlug &&
+          product.thumbnailUrl != null &&
+          product.thumbnailUrl!.isNotEmpty) {
+        return product.thumbnailUrl;
+      }
+    }
+    return null;
+  }
+
+  static String? _firstPreview(List<ProductSummary> products) {
+    for (final ProductSummary product in products) {
+      if (product.thumbnailUrl != null && product.thumbnailUrl!.isNotEmpty) {
+        return product.thumbnailUrl;
+      }
+    }
+    return null;
+  }
 }
 
-/// The showcase entry point, sitting first in the category rail.
-///
-/// Filled rather than outlined like its neighbours, and captioned in the
-/// accent. It is the only tile that opens a screen instead of filtering the
-/// catalog, and looking identical to the others would promise otherwise.
+/// Editorial entry point for the newest collection. It is deliberately not a
+/// synthetic backend category: tapping it opens the dedicated showcase.
 class _NewTile extends StatelessWidget {
-  const _NewTile({required this.onTap});
+  const _NewTile({required this.imageUrl, required this.onTap});
 
+  final String? imageUrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: CategoryRail._diameter + 4,
-        child: Column(
-          children: <Widget>[
-            Container(
-              width: CategoryRail._diameter,
-              height: CategoryRail._diameter,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[
-                    AppColors.primaryContainer,
-                    AppColors.secondaryContainer,
-                  ],
+    return Semantics(
+      button: true,
+      label: 'New arrivals',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: CategoryRail._itemWidth,
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: CategoryRail._diameter,
+                height: CategoryRail._diameter,
+                padding: const EdgeInsets.all(2.5),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primaryContainer,
                 ),
-                border: Border.all(color: AppColors.primary, width: 1.4),
+                child: ClipOval(
+                  child: imageUrl == null
+                      ? const _CategoryPlaceholder(icon: Icons.auto_awesome)
+                      : CachedNetworkImage(
+                          imageUrl: imageUrl!,
+                          fit: BoxFit.cover,
+                          placeholder: (BuildContext context, String url) =>
+                              const _CategoryPlaceholder(
+                            icon: Icons.auto_awesome,
+                          ),
+                          errorWidget: (
+                            BuildContext context,
+                            String url,
+                            Object error,
+                          ) =>
+                              const _CategoryPlaceholder(
+                            icon: Icons.auto_awesome,
+                          ),
+                        ),
+                ),
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.auto_awesome,
-                size: 26,
-                color: AppColors.primary,
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                'New',
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: AppTypography.bodyMdBold.copyWith(
+                  fontSize: 10.5,
+                  color: AppColors.primary,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              'New',
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              style: AppTypography.bodyMdBold.copyWith(
-                fontSize: 12,
-                color: AppColors.primary,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -152,46 +173,94 @@ class _NewTile extends StatelessWidget {
 }
 
 class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.category, required this.onTap});
+  const _CategoryTile({
+    required this.category,
+    required this.imageUrl,
+    required this.onTap,
+  });
 
   final Category category;
+  final String? imageUrl;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: CategoryRail._diameter + 4,
-        child: Column(
-          children: <Widget>[
-            Container(
-              width: CategoryRail._diameter,
-              height: CategoryRail._diameter,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surfaceContainerLow,
-                border: Border.all(color: AppColors.outlineVariant),
+    return Semantics(
+      button: true,
+      label: '${category.name}, sizes 40 to 48',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          width: CategoryRail._itemWidth,
+          child: Column(
+            children: <Widget>[
+              Container(
+                width: CategoryRail._diameter,
+                height: CategoryRail._diameter,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.surfaceContainer,
+                  border: Border.all(
+                    color: AppColors.outlineVariant,
+                    width: 0.8,
+                  ),
+                ),
+                child: imageUrl == null
+                    ? const _CategoryPlaceholder()
+                    : CachedNetworkImage(
+                        imageUrl: imageUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (BuildContext context, String url) =>
+                            const _CategoryPlaceholder(),
+                        errorWidget: (
+                          BuildContext context,
+                          String url,
+                          Object error,
+                        ) =>
+                            const _CategoryPlaceholder(),
+                      ),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                category.name.characters.first.toUpperCase(),
-                style: AppTypography.titleMd.copyWith(
-                  fontSize: 26,
-                  color: AppColors.primary,
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                category.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: AppTypography.bodyMd.copyWith(
+                  fontSize: 10.5,
+                  height: 1.05,
                 ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              category.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: AppTypography.bodyMd.copyWith(fontSize: 12),
-            ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryPlaceholder extends StatelessWidget {
+  const _CategoryPlaceholder({this.icon = Icons.checkroom});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[
+            AppColors.primaryContainer,
+            AppColors.surfaceContainer,
           ],
         ),
+      ),
+      child: Center(
+        child: Icon(icon, size: 24, color: AppColors.primary),
       ),
     );
   }

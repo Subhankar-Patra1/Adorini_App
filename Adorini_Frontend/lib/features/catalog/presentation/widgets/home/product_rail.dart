@@ -15,22 +15,31 @@ class SectionHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.onSeeAll,
+    this.compact = false,
     super.key,
   });
 
   final String title;
   final String? subtitle;
   final VoidCallback? onSeeAll;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.containerMargin,
-        AppSpacing.md,
-        AppSpacing.sm,
-        AppSpacing.base,
-      ),
+      padding: compact
+          ? const EdgeInsets.fromLTRB(
+              AppSpacing.md,
+              AppSpacing.base,
+              AppSpacing.base,
+              AppSpacing.xs,
+            )
+          : const EdgeInsets.fromLTRB(
+              AppSpacing.containerMargin,
+              AppSpacing.md,
+              AppSpacing.sm,
+              AppSpacing.base,
+            ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
@@ -41,7 +50,9 @@ class SectionHeader extends StatelessWidget {
               children: <Widget>[
                 Text(
                   title,
-                  style: AppTypography.titleMd.copyWith(fontSize: 20),
+                  style: AppTypography.titleMd.copyWith(
+                    fontSize: compact ? 18 : 20,
+                  ),
                 ),
                 if (subtitle != null) ...<Widget>[
                   const SizedBox(height: 2),
@@ -58,6 +69,14 @@ class SectionHeader extends StatelessWidget {
           ),
           if (onSeeAll != null)
             TextButton(
+              style: compact
+                  ? TextButton.styleFrom(
+                      minimumSize: const Size(0, 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    )
+                  : null,
               onPressed: onSeeAll,
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -65,13 +84,13 @@ class SectionHeader extends StatelessWidget {
                   Text(
                     'See all',
                     style: AppTypography.bodyMdBold.copyWith(
-                      fontSize: 13,
+                      fontSize: compact ? 11 : 13,
                       color: AppColors.primary,
                     ),
                   ),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
-                    size: 18,
+                    size: compact ? 16 : 18,
                     color: AppColors.primary,
                   ),
                 ],

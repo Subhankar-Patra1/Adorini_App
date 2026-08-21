@@ -25,8 +25,16 @@ export const sizeRangeSchema = z
   });
 
 export const sizeRuleEntrySchema = z.object({
-  /** Nominal size as printed on the label. Adorini's band is 40–48. */
-  nominalSize: z.number().int().min(40).max(48),
+  /**
+   * Nominal size as printed on the label.
+   *
+   * Floor is 32, not 40: since `AddPerCategorySizeBands` the band belongs to
+   * the category, and Blouse stocks 32-36. While this said 40 the database
+   * accepted a blouse variant that this schema then refused to describe, so
+   * building a size chart for one threw — the catalogue could hold stock it
+   * could not render a chart for.
+   */
+  nominalSize: z.number().int().min(32).max(48),
   bust: sizeRangeSchema,
   waist: sizeRangeSchema,
   hip: sizeRangeSchema,

@@ -6,9 +6,10 @@ import { CatalogService } from './services/catalog.service';
 import { Brand } from '../../database/entities/brand.entity';
 import { Category } from '../../database/entities/category.entity';
 import { Product } from '../../database/entities/product.entity';
+import { SearchQuery } from '../../database/entities/search-query.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Product, Category, Brand])],
+  imports: [TypeOrmModule.forFeature([Product, Category, Brand, SearchQuery])],
   controllers: [CatalogController],
   providers: [CatalogService],
 })

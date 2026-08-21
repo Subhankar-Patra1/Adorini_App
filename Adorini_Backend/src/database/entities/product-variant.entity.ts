@@ -13,7 +13,13 @@ import type { Product } from './product.entity';
  */
 @Unique('uq_variant_product_size_colour', ['productId', 'nominalSize', 'colour'])
 @Check('chk_variant_stock_non_negative', '"stock_quantity" >= 0')
-@Check('chk_variant_nominal_size_range', '"nominal_size" BETWEEN 40 AND 48')
+// 32, not 40: blouses are stocked at 32-36 (see AddPerCategorySizeBands). This
+// must mirror the database exactly — while it said 40, `migration:generate`
+// read the real 32-48 constraint as drift and would have emitted a migration
+// narrowing it back, silently deleting every blouse variant on the next deploy.
+// The real per-category band lives on `categories.sizes`; this is a coarse
+// backstop against a transposed digit, since a CHECK cannot read another table.
+@Check('chk_variant_nominal_size_range', '"nominal_size" BETWEEN 32 AND 48')
 @Check('chk_variant_price_positive', '"price_paise" IS NULL OR "price_paise" > 0')
 @Entity('product_variants')
 export class ProductVariant extends BaseEntity {

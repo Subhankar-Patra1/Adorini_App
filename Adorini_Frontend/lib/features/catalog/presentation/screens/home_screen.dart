@@ -37,7 +37,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final ScrollController _scrollController = ScrollController();
-  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -49,7 +48,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -69,12 +67,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _openCatalog(CatalogFilters filters) {
     ref.read(catalogFiltersProvider.notifier).state = filters;
     context.go('/catalog');
-  }
-
-  void _search(String term) {
-    final String query = term.trim();
-    if (query.isEmpty) return;
-    _openCatalog(CatalogFilters(query: query));
   }
 
   Future<void> _refresh() async {
@@ -104,9 +96,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           controller: _scrollController,
           slivers: <Widget>[
             _HomeAppBar(
-              controller: _searchController,
               cartCount: cartCount,
-              onSubmitted: _search,
+              onSearch: () => context.push('/search'),
               onCart: () => context.push('/cart'),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xs)),
@@ -114,6 +105,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             SliverToBoxAdapter(
               child: SectionHeader(
                 title: 'Shop by category',
+                compact: true,
                 onSeeAll: () => _openCatalog(const CatalogFilters()),
               ),
             ),
@@ -241,15 +233,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// editorial Home sections scroll underneath.
 class _HomeAppBar extends StatelessWidget {
   const _HomeAppBar({
-    required this.controller,
     required this.cartCount,
-    required this.onSubmitted,
+    required this.onSearch,
     required this.onCart,
   });
 
-  final TextEditingController controller;
   final int cartCount;
-  final ValueChanged<String> onSubmitted;
+  final VoidCallback onSearch;
   final VoidCallback onCart;
 
   @override
@@ -298,11 +288,9 @@ class _HomeAppBar extends StatelessWidget {
           child: SizedBox(
             height: 44,
             child: TextField(
-              controller: controller,
-              textInputAction: TextInputAction.search,
-              onSubmitted: onSubmitted,
-              onTapOutside: (PointerDownEvent event) =>
-                  FocusScope.of(context).unfocus(),
+              readOnly: true,
+              canRequestFocus: false,
+              onTap: onSearch,
               style: AppTypography.bodyMd.copyWith(fontSize: 14),
               decoration: InputDecoration(
                 hintText: 'Search styles, brands and more',

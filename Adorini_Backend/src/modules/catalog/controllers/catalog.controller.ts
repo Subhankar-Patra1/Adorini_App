@@ -7,6 +7,10 @@ import { BrandDto } from '../dto/brand.dto';
 import { CategoryDto } from '../dto/category.dto';
 import { ListProductsQueryDto } from '../dto/list-products-query.dto';
 import { ProductListResponseDto } from '../dto/product-summary.dto';
+import {
+  SearchSuggestionsResponseDto,
+  SuggestQueryDto,
+} from '../dto/search-suggestion.dto';
 
 /**
  * Browsing the catalogue requires no account — a shopper must be able to see
@@ -43,5 +47,14 @@ export class CatalogController {
   @ApiOkResponse({ type: ProductListResponseDto })
   listProducts(@Query() query: ListProductsQueryDto): Promise<ProductListResponseDto> {
     return this.catalog.listProducts(query);
+  }
+
+  @Get('suggest')
+  @ApiOperation({
+    summary: 'Type-ahead suggestions: categories, brands and product names',
+  })
+  @ApiOkResponse({ type: SearchSuggestionsResponseDto })
+  suggest(@Query() query: SuggestQueryDto): Promise<SearchSuggestionsResponseDto> {
+    return this.catalog.suggest(query);
   }
 }

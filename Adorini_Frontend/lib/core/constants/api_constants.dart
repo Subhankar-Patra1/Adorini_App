@@ -36,6 +36,9 @@ class ApiConstants {
   static const String brands = '/catalog/brands';
   static const String products = '/catalog/products';
 
+  /// Type-ahead suggestions: category, brand and product names.
+  static const String suggest = '/catalog/suggest';
+
   // ---- pdp (public reads; keyed by slug, not id) ----
   static String productDetail(String slug) => '/pdp/$slug';
   static String productReviews(String slug) => '/pdp/$slug/reviews';

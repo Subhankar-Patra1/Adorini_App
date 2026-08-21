@@ -14,6 +14,7 @@ import { Referral } from './referral.entity';
 import { RefreshToken } from './refresh-token.entity';
 import { ReturnRequest } from './return-request.entity';
 import { Review } from './review.entity';
+import { SearchQuery } from './search-query.entity';
 import { SizeEnquiry } from './size-enquiry.entity';
 import { User } from './user.entity';
 import { Video } from './video.entity';
@@ -38,6 +39,7 @@ export * from './referral.entity';
 export * from './refresh-token.entity';
 export * from './return-request.entity';
 export * from './review.entity';
+export * from './search-query.entity';
 export * from './size-enquiry.entity';
 export * from './user.entity';
 export * from './video.entity';
@@ -71,6 +73,7 @@ export const ENTITIES = [
   RefreshToken,
   ReturnRequest,
   Review,
+  SearchQuery,
   SizeEnquiry,
   User,
   Video,

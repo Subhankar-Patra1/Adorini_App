@@ -25,6 +25,10 @@ import {
   UpdateVariantDto,
 } from '../dto/admin.dto';
 import { AdminCatalogService } from '../services/admin-catalog.service';
+import {
+  SearchAnalyticsService,
+  type SearchAnalyticsReport,
+} from '../services/search-analytics.service';
 import { AdminGuard } from '../../../common/guards/admin.guard';
 import { NoStoreInterceptor } from '../../../common/interceptors/no-store.interceptor';
 
@@ -46,7 +50,29 @@ import { NoStoreInterceptor } from '../../../common/interceptors/no-store.interc
 @UseInterceptors(NoStoreInterceptor)
 @Controller('admin')
 export class AdminCatalogController {
-  constructor(private readonly admin: AdminCatalogService) {}
+  constructor(
+    private readonly admin: AdminCatalogService,
+    private readonly searchAnalytics: SearchAnalyticsService,
+  ) {}
+
+  /**
+   * What shoppers searched for, and what they searched for and did not find.
+   *
+   * `unmetDemand` is the merchandising output: terms returning zero results are
+   * a buying list written by the people who wanted to spend money and could not.
+   */
+  @Get('search-analytics')
+  @ApiOperation({ summary: 'Search terms and unmet demand over a window' })
+  searchAnalyticsReport(
+    @Query('windowDays') windowDays?: string,
+    @Query('limit') limit?: string,
+  ): Promise<SearchAnalyticsReport> {
+    // Clamped rather than validated into a 400: this is a dashboard read, and
+    // a nonsense window should give a sane report, not an error page.
+    const days = Math.min(Math.max(Number(windowDays) || 30, 1), 365);
+    const rows = Math.min(Math.max(Number(limit) || 20, 1), 100);
+    return this.searchAnalytics.report(days, rows);
+  }
 
   @Get('products')
   @ApiOperation({

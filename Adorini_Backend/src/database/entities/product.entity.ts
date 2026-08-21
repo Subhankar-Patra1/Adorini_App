@@ -94,6 +94,19 @@ export class Product extends BaseEntity {
   sizeRules: SizeRules | null;
 
   /**
+   * Sold in one size that fits a standard adult range, rather than in a band.
+   *
+   * When true the product carries exactly one variant per colour and its
+   * `nominalSize` is meaningless — a placeholder kept only because the column is
+   * NOT NULL (see migration `AddFreeSizeProducts` for why it is not nullable).
+   * **Branch on this flag, never on the size**: readers that inspect
+   * `nominalSize` on a free-size product will report a size the shopper was
+   * never offered. `sizeRules` is normally null here for the same reason.
+   */
+  @Column({ type: 'boolean', default: false })
+  isFreeSize: boolean;
+
+  /**
    * Full-text search document, maintained entirely by a database trigger
    * (migration `AddProductSearchVector`) and queried as raw SQL by the catalog.
    *

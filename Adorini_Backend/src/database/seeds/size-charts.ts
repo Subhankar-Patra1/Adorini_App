@@ -45,10 +45,19 @@ const GUIDANCE: Record<FabricType, string> = {
  * seed can never introduce a `size_rules` payload that the admin endpoint would
  * later reject as malformed (@GUARD Risk #5).
  */
-export function buildSizeChart(fabricType: FabricType, garmentLengthCm: number): SizeRules {
+export function buildSizeChart(
+  fabricType: FabricType,
+  garmentLengthCm: number,
+  /**
+   * The band to chart. Defaults to the common garment band, but a category
+   * with its own band must pass it — a Blouse charted over 40-48 would show a
+   * shopper five sizes none of which exist as variants.
+   */
+  sizes: readonly number[] = NOMINAL_SIZES,
+): SizeRules {
   const tolerance = FABRIC_TOLERANCE_CM[fabricType];
 
-  const entries = NOMINAL_SIZES.map((nominalSize) => {
+  const entries = sizes.map((nominalSize) => {
     const bustCm = nominalSizeToBustCm(nominalSize);
     // Standard ethnic-wear block: waist sits ~20cm under bust, hip ~3cm over.
     const waistCm = bustCm - 20;
