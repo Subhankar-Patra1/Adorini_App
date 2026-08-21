@@ -7,8 +7,8 @@ import type { Review } from './review.entity';
 import type { Wallet } from './wallet.entity';
 
 /**
- * A buyer or admin. Phone is the primary identity — Adorini onboards via MSG91
- * OTP, and Google OAuth is a secondary convenience that attaches to an existing
+ * A buyer or admin. Phone is the primary identity — Adorini onboards via a
+ * WhatsApp OTP, and Google OAuth is a secondary convenience that attaches to an existing
  * phone-identified account.
  */
 @Entity('users')

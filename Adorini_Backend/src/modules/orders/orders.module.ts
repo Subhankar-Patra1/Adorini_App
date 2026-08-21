@@ -12,7 +12,7 @@ import { User } from '../../database/entities/user.entity';
 import { Wallet } from '../../database/entities/wallet.entity';
 import { WalletTransaction } from '../../database/entities/wallet-transaction.entity';
 import { LogisticsModule } from '../../providers/logistics/logistics.module';
-import { SmsModule } from '../../providers/sms/sms.module';
+import { WhatsappModule } from '../../providers/whatsapp/whatsapp.module';
 
 /**
  * Orders: the domain core plus the buyer-facing routes.
@@ -32,7 +32,7 @@ import { SmsModule } from '../../providers/sms/sms.module';
     // buyer's phone to message them and to match an inbound WhatsApp reply.
     TypeOrmModule.forFeature([Order, OrderItem, ProductVariant, User, Wallet, WalletTransaction]),
     LogisticsModule,
-    SmsModule,
+    WhatsappModule,
   ],
   controllers: [OrdersController],
   providers: [OrderTransitionService, OrdersService, DeliveryFailureService],

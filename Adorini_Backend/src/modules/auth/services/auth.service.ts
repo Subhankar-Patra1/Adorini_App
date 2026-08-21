@@ -17,7 +17,7 @@ import { ReferralOutcome, isReferralApplied } from '../referral-status';
 import { ReferralStatus } from '../../../common/enums/domain.enums';
 import { maskPhone } from '../../../common/utils/phone.util';
 import { OAuthService, type GoogleUserPayload } from '../../../providers/oauth/oauth.service';
-import { SmsService } from '../../../providers/sms/sms.service';
+import { WhatsAppService } from '../../../providers/whatsapp/whatsapp.service';
 import type { Env } from '../../../config/env.validation';
 
 const PG_UNIQUE_VIOLATION = '23505';
@@ -58,7 +58,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly tokens: TokenService,
     private readonly registrations: RegistrationService,
-    private readonly sms: SmsService,
+    private readonly whatsapp: WhatsAppService,
     private readonly oauth: OAuthService,
     config: ConfigService<Env, true>,
   ) {
@@ -89,7 +89,7 @@ export class AuthService {
       });
     }
 
-    await this.sms.sendOtp(phone, outcome.otp);
+    await this.whatsapp.sendOtp(phone, outcome.otp);
 
     return {
       expiresInSeconds: outcome.expiresInSeconds,

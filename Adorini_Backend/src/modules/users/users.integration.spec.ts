@@ -25,7 +25,7 @@ import {
 import { OAuthService } from '../../providers/oauth/oauth.service';
 import { RedisModule } from '../../providers/redis/redis.module';
 import { RedisService } from '../../providers/redis/redis.service';
-import { SmsService } from '../../providers/sms/sms.service';
+import { WhatsAppService } from '../../providers/whatsapp/whatsapp.service';
 
 /**
  * Profile and address management over real HTTP.
@@ -84,13 +84,13 @@ describe('users (integration)', () => {
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],
     })
-      .overrideProvider(SmsService)
+      .overrideProvider(WhatsAppService)
       .useValue({
-        sendOtp: jest.fn((phone: string, code?: string) => {
-          if (code) sentCodes.set(phone, code);
+        sendOtp: jest.fn((phone: string, code: string) => {
+          sentCodes.set(phone, code);
           return Promise.resolve();
         }),
-        whatsappNotify: jest.fn().mockResolvedValue(undefined),
+        notifyTemplate: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(OAuthService)
       .useValue({ verifyGoogleIdToken: jest.fn() })

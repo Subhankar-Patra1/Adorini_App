@@ -9,11 +9,7 @@ import { statusAfterSuccessfulPayment } from '../../orders/services/order-state-
 import { OrderTransitionService } from '../../orders/services/order-transition.service';
 import { OrdersService } from '../../orders/services/orders.service';
 import { WalletCreditService } from '../../wallet/services/wallet-credit.service';
-import type {
-  CashfreeWebhookPayload,
-  DelhiveryWebhookPayload,
-  Msg91WebhookPayload,
-} from '../dto/webhook-payloads.dto';
+import type { CashfreeWebhookPayload, DelhiveryWebhookPayload } from '../dto/webhook-payloads.dto';
 
 /** What the endpoint reports back. Every value is answered with a 2xx — see the controller. */
 export type WebhookOutcome = 'processed' | 'duplicate' | 'ignored' | 'unmatched';
@@ -145,32 +141,15 @@ export class WebhooksService {
      * Threaded back through the return value rather than held on the service:
      * this is a singleton handling concurrent webhooks, so instance state would
      * leak one request's order into another's prompt. `promptBuyer` swallows its
-     * own failures, so an unreachable MSG91 cannot turn a correctly-recorded
-     * delivery failure into a non-2xx that Delhivery then redelivers.
+     * own failures, so an unreachable Meta WhatsApp API cannot turn a
+     * correctly-recorded delivery failure into a non-2xx that Delhivery then
+     * redelivers.
      */
     if (ingest.result.promptOrder) {
       await this.deliveryFailures.promptBuyer(ingest.result.promptOrder);
     }
 
     return ingest.result.outcome;
-  }
-
-  async handleMsg91(payload: Msg91WebhookPayload): Promise<WebhookOutcome> {
-    const eventId = payload.requestId ?? payload.message_id;
-
-    const ingest = await this.idempotency.ingest(
-      {
-        provider: WebhookProvider.MSG91,
-        eventId: eventId as string,
-        eventType: 'DELIVERY_REPORT',
-        payload,
-      },
-      // Recorded and nothing more: the OTP flow completes when the user enters
-      // the code, so a carrier receipt has no state to advance.
-      async () => Promise.resolve({ relatedEntityId: null, result: 'processed' as const }),
-    );
-
-    return ingest.status === 'duplicate' ? 'duplicate' : ingest.result;
   }
 
   private async applyCashfree(

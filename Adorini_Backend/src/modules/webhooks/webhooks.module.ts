@@ -20,7 +20,7 @@ import { WalletModule } from '../wallet/wallet.module';
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService, WebhookIdempotencyService],
-  // `whatsapp-bot` reuses the idempotency service: MSG91 redelivers inbound
+  // `whatsapp-bot` reuses the idempotency service: Meta redelivers inbound
   // messages too, and a replayed "yes, retry" must not book two reattempts.
   exports: [WebhookIdempotencyService],
 })

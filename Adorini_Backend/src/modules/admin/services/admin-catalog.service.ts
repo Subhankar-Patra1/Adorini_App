@@ -5,16 +5,21 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 
 import { Brand } from '../../../database/entities/brand.entity';
 import { Category } from '../../../database/entities/category.entity';
+import { MediaAsset } from '../../../database/entities/media-asset.entity';
 import { Product } from '../../../database/entities/product.entity';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
 import { SizeEnquiry } from '../../../database/entities/size-enquiry.entity';
 import { sizeRulesSchema } from '../../../common/schemas/size-rules.schema';
+import { MediaProvenance, MediaType } from '../../../common/enums/domain.enums';
 import type { FabricType, SizeEnquiryStatus } from '../../../common/enums/domain.enums';
+import type { Env } from '../../../config/env.validation';
+import { StorageService } from '../../../providers/storage/storage.service';
 import type {
   CreateProductDto,
   CreateVariantDto,
@@ -23,6 +28,13 @@ import type {
 } from '../dto/admin.dto';
 
 const PG_UNIQUE_VIOLATION = '23505';
+
+/** Kept in step with the same map in `PdpService` — the two never need to agree with each other, only with what they each actually name their own objects. */
+const MEDIA_MIME_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
 
 @Injectable()
 export class AdminCatalogService {
@@ -34,6 +46,9 @@ export class AdminCatalogService {
     @InjectRepository(Category) private readonly categories: Repository<Category>,
     @InjectRepository(Brand) private readonly brands: Repository<Brand>,
     @InjectRepository(SizeEnquiry) private readonly enquiries: Repository<SizeEnquiry>,
+    @InjectRepository(MediaAsset) private readonly media: Repository<MediaAsset>,
+    private readonly storage: StorageService,
+    private readonly config: ConfigService<Env, true>,
   ) {}
 
   async listProducts(includeInactive: boolean, limit: number, offset: number) {
@@ -168,6 +183,65 @@ export class AdminCatalogService {
         'That SKU, or that size/colour for this product, already exists',
       );
     }
+  }
+
+  /**
+   * Categories/brands with their real ids, for the product-creation form.
+   *
+   * The public `GET /catalog/categories`/`brands` deliberately only ever
+   * return `slug` — the storefront has no use for the id, and there is no
+   * reason to hand it out to anyone who doesn't need it. `POST /admin/products`
+   * needs the actual UUID, so admin gets its own read of the same tables.
+   * Includes inactive rows, same as every other admin listing.
+   */
+  async listCategoriesForAdmin() {
+    const rows = await this.categories.find({ order: { displayOrder: 'ASC' } });
+    return rows.map((c) => ({ id: c.id, slug: c.slug, name: c.name, isActive: c.isActive }));
+  }
+
+  async listBrandsForAdmin() {
+    const rows = await this.brands.find({ order: { displayOrder: 'ASC' } });
+    return rows.map((b) => ({ id: b.id, slug: b.slug, name: b.name, isActive: b.isActive }));
+  }
+
+  /**
+   * Attaches admin-curated gallery images to a product.
+   *
+   * `startIndex` is the count of media already on the product, not a fixed 0 —
+   * a second call appends rather than overwriting the `displayOrder: 0` row,
+   * which is the one `CatalogService.listProducts` reads as the catalog
+   * thumbnail (`catalog.service.ts`). For a brand-new product this is always
+   * 0, so the first image uploaded here is what buyers see in the catalog.
+   */
+  async attachProductMedia(productId: string, files: Express.Multer.File[]) {
+    await this.requireProduct(productId);
+
+    if (files.length === 0) {
+      return [];
+    }
+
+    const startIndex = await this.media.countBy({ productId });
+
+    const uploaded = await Promise.all(
+      files.map(async (file, index) => {
+        const extension = MEDIA_MIME_EXTENSIONS[file.mimetype] ?? 'jpg';
+        const objectKey = `products/${productId}/${startIndex + index}.${extension}`;
+        await this.storage.uploadFile(objectKey, file.buffer, file.mimetype);
+
+        return this.media.create({
+          productId,
+          objectKey,
+          type: MediaType.IMAGE,
+          provenance: MediaProvenance.ADMIN,
+          uploadedByUserId: null,
+          reviewId: null,
+          displayOrder: startIndex + index,
+        });
+      }),
+    );
+
+    const saved = await this.media.save(uploaded);
+    return saved.map((m) => this.toAdminMedia(m));
   }
 
   /** The custom-size enquiry inbox — demand data as much as a support queue. */
@@ -325,5 +399,18 @@ export class AdminCatalogService {
       stockQuantity: variant.stockQuantity,
       isActive: variant.isActive,
     };
+  }
+
+  private toAdminMedia(media: MediaAsset) {
+    return {
+      id: media.id,
+      url: this.toPublicUrl(media.objectKey),
+      displayOrder: media.displayOrder,
+    };
+  }
+
+  private toPublicUrl(objectKey: string): string {
+    const base = this.config.get('R2_PUBLIC_BASE_URL', { infer: true });
+    return `${base.replace(/\/$/, '')}/${objectKey}`;
   }
 }

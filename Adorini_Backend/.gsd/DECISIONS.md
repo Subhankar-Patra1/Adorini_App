@@ -30,7 +30,7 @@ Cloudflare R2 for media ($0.015/GB-month, **$0 egress**) vs S3 (~$0.09/GB egress
 
 ## ADR-004: Direct REST for MSG91 and Delhivery, official SDK for Cashfree
 
-**Date**: 2026-08-10 · **Status**: Accepted
+**Date**: 2026-08-10 · **Status**: Accepted · **MSG91 half superseded by ADR-036**
 
 MSG91's npm ecosystem (`msg91`, `msg91-sdk`, `@msg91comm/otp`, `sendotp`) is a set of thin, inconsistently-maintained community wrappers with no clear official choice; Delhivery publishes no SDK. Both are called via thin internal providers over REST — equivalent effort, no unmaintained-dependency risk. For Cashfree, `@cashfreepayments/cashfree-sdk` is deprecated and targets legacy endpoints; use official `cashfree-pg` (v6.0.4+).
 
@@ -133,7 +133,7 @@ Two dependencies are forced above what their parents ask for:
 
 ## ADR-014: Self-managed OTP, with the attempt cap as the real control
 
-**Date**: 2026-08-12 · **Status**: Accepted
+**Date**: 2026-08-12 · **Status**: Accepted · **Delivery channel superseded by ADR-036** (self-managed generation/verification described here is unchanged)
 
 We generate the code, store it in Redis, and use MSG91 purely for delivery (`sendOtp` accepts an explicit OTP). Verification is a local Redis comparison, so login does not depend on MSG91 being reachable at verify time, and expiry/attempt/lockout policy is ours rather than theirs.
 
@@ -297,7 +297,7 @@ The PRD specifies "infinite scroll" for the catalog grid but never picks cursor 
 
 ## ADR-029: Shared-secret auth for Delhivery and MSG91 webhooks
 
-**Date**: 2026-08-12 · **Status**: Accepted
+**Date**: 2026-08-12 · **Status**: Accepted · **MSG91 half superseded by ADR-036** (WhatsApp inbound now uses Meta's HMAC-signed `X-Hub-Signature-256`, not a shared secret; Delhivery's half is unchanged)
 
 Cashfree signs its callbacks (HMAC-SHA256 over `timestamp + rawBody`), and `PaymentsService.verifyWebhookSignature` already checks it. Delhivery and MSG91 do not sign at all — but their endpoints move order state and trigger a ₹100 wallet credit, so leaving them unauthenticated was not an option.
 
@@ -379,7 +379,7 @@ Cancellation used to restock unconditionally. That is correct pre-dispatch, but 
 
 ## ADR-035: `whatsapp-bot` comes into scope for exactly one conversation
 
-**Date**: 2026-08-12 · **Status**: Accepted · **Supersedes**: the "not built in this milestone" decision of 2026-08-10
+**Date**: 2026-08-12 · **Status**: Accepted · **Supersedes**: the "not built in this milestone" decision of 2026-08-10 · **MSG91-specific details superseded by ADR-036** (the one-conversation scope and matching logic described here are unchanged)
 
 `whatsapp-bot/` was retained as empty boilerplate by explicit decision, with a note not to add it to `final_project_context.md` without approval. Answering the ADR-033 prompt required an inbound channel, and in-WhatsApp replies were chosen over an app deep link — the buyer being reached has just had a delivery go wrong, and requiring them to open and authenticate an app is friction exactly where it costs most.
 
@@ -393,3 +393,23 @@ Cancellation used to restock unconditionally. That is correct pre-dispatch, but 
 - The in-app `POST /orders/:id/request-redelivery` exists alongside it, so a buyer who opens the app instead is not stuck.
 
 **External dependency**: WhatsApp requires business-initiated messages to use a Meta-approved template, registered through MSG91 (`MSG91_DELIVERY_RETRY_TEMPLATE`). That approval has days-to-weeks lead time, like DLT registration, and MSG91 credentials are still pending — so this flow is built and tested but not yet exercisable against a live account.
+
+## ADR-036: Drop MSG91, call Meta's WhatsApp Business Cloud API directly
+
+**Date**: 2026-08-17 · **Status**: Accepted · **Supersedes**: the MSG91 half of ADR-004, ADR-014's delivery channel, the MSG91 half of ADR-029, and the MSG91-specific details of ADR-035
+
+MSG91 credentials never arrived; the business set up a Meta developer account instead and asked to drop MSG91 entirely — both OTP delivery (previously SMS via MSG91) and the WhatsApp delivery-retry channel (previously WhatsApp-via-MSG91-as-BSP) now call Meta's Graph API directly with no BSP in between.
+
+**Chosen**: `providers/sms/` (`SmsService`) replaced wholesale by `providers/whatsapp/` (`WhatsAppService`), talking to `https://graph.facebook.com/{version}/{phone_number_id}/messages` with a bearer System User token. Two methods survive the rename 1:1 in shape: `sendOtp(phone, otp)` and `notifyTemplate(phone, templateName, bodyParams)` (renamed from `whatsappNotify`). `SmsService.verifyOtp` and the `MSG91_SENDER_ID` env var were dropped outright rather than ported — both were already dead code, since OTP verification has been self-managed via Redis since ADR-014 and `MSG91_SENDER_ID` was never read by any request.
+
+**OTP generation/verification is unchanged** — ADR-014's Redis-HMAC design doesn't care which provider delivers the code, only that delivery happens. What changed is delivery only.
+
+**Webhook auth changed shape, not just provider**: ADR-029's shared-secret scheme (`x-adorini-webhook-token`) covered MSG91 because MSG91 didn't sign its callbacks. Meta does — inbound WhatsApp traffic (`POST /webhooks/whatsapp`) is now authenticated by Meta's `X-Hub-Signature-256` (HMAC-SHA256 over the raw body, keyed by the app secret), verified the same way `PaymentsService` already verifies Cashfree's signature. Meta also requires a one-time `GET` verification handshake (`hub.mode`/`hub.verify_token`/`hub.challenge`) that has no MSG91 equivalent. The `/webhooks/msg91` delivery-report route is deleted outright — it was a pure audit sink with no consumer, and Meta's webhook already carries delivery-status receipts (`statuses[]`) on the same URL as inbound messages.
+
+**`WebhookProvider.MSG91` renamed to `WebhookProvider.WHATSAPP`**, via a same-transaction `ALTER TYPE ... RENAME VALUE` migration (metadata-only, no row rewrite) rather than the more elaborate add-value/backfill/drop-type dance — safe because this is pre-launch and a rename is all Postgres needs for this case.
+
+**Known gap, accepted deliberately**: WhatsApp is now the *only* OTP delivery channel — no SMS fallback. A phone number with no active WhatsApp account cannot receive a login code and cannot sign up. Meta's Cloud API at least fails loudly (a real error object) rather than MSG91's old silent-success-on-bad-credentials failure mode, but there is no product-level messaging yet for a buyer stuck on this path. Flagged on `WhatsAppService.sendOtp` and in `env.validation.ts`; not solved in this pass — revisit if support volume shows it is a real problem, not a hypothetical one.
+
+**Unverified against a live account** (same caveat ADR-014 and ADR-035 already carried for MSG91, now inherited by Meta): the OTP template's button-component shape (one-tap autofill vs. copy-code vs. none) cannot be confirmed until the actual approved template exists in WhatsApp Manager — `sendOtp` currently sends a body-only send and will need its `components` array adjusted once the template is live. The inbound webhook payload shape (`entry[].changes[].value.messages[]` vs `statuses[]`) is written from Meta's published docs, not yet exercised against real traffic.
+
+**Consequence**: every `MSG91_*` env var is gone, replaced by `WHATSAPP_*` (`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_BUSINESS_ACCOUNT_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN`, `WHATSAPP_API_VERSION`, `WHATSAPP_OTP_TEMPLATE_NAME`, `WHATSAPP_DELIVERY_RETRY_TEMPLATE`, `WHATSAPP_TEMPLATE_LANGUAGE`). The delivery-retry template (`adorini_delivery_retry`) must be resubmitted fresh for Meta approval — template approval does not transfer between BSPs.

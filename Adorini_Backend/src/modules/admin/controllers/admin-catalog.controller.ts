@@ -7,13 +7,20 @@ import {
   Patch,
   Post,
   Query,
+  UnsupportedMediaTypeException,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 
 import {
+  AdminBrandDto,
+  AdminCategoryDto,
   AdminEnquiryDto,
+  AdminMediaDto,
   AdminProductDto,
   AdminVariantDto,
   CreateProductDto,
@@ -31,6 +38,12 @@ import {
 } from '../services/search-analytics.service';
 import { AdminGuard } from '../../../common/guards/admin.guard';
 import { NoStoreInterceptor } from '../../../common/interceptors/no-store.interceptor';
+
+/** Matches the PRD's stated gallery cap (see `MediaAsset.displayOrder`'s doc comment). */
+const MAX_PRODUCT_IMAGES = 5;
+const MAX_PRODUCT_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Kept in step with `MEDIA_MIME_EXTENSIONS` in `AdminCatalogService`. */
+const PRODUCT_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 /**
  * Store-owner tools.
@@ -74,6 +87,28 @@ export class AdminCatalogController {
     return this.searchAnalytics.report(days, rows);
   }
 
+  @Get('categories')
+  @ApiOperation({
+    summary: 'List categories with ids, for building the product-creation form',
+    description:
+      'Unlike GET /catalog/categories, this includes the id every admin write needs and does not hide inactive rows.',
+  })
+  @ApiResponse({ status: 200, type: [AdminCategoryDto] })
+  listCategories() {
+    return this.admin.listCategoriesForAdmin();
+  }
+
+  @Get('brands')
+  @ApiOperation({
+    summary: 'List brands with ids, for building the product-creation form',
+    description:
+      'Unlike GET /catalog/brands, this includes the id every admin write needs and does not hide inactive rows.',
+  })
+  @ApiResponse({ status: 200, type: [AdminBrandDto] })
+  listBrands() {
+    return this.admin.listBrandsForAdmin();
+  }
+
   @Get('products')
   @ApiOperation({
     summary: 'List products, including inactive ones',
@@ -96,6 +131,39 @@ export class AdminCatalogController {
   @ApiResponse({ status: 409, description: 'Slug already in use' })
   createProduct(@Body() dto: CreateProductDto) {
     return this.admin.createProduct(dto);
+  }
+
+  @Post('products/:id/media')
+  @UseInterceptors(
+    FilesInterceptor('images', MAX_PRODUCT_IMAGES, {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_PRODUCT_IMAGE_BYTES },
+      fileFilter: (_req, file, callback) => {
+        if (!PRODUCT_IMAGE_MIME_TYPES.has(file.mimetype)) {
+          callback(
+            new UnsupportedMediaTypeException(`Unsupported image type: ${file.mimetype}`),
+            false,
+          );
+          return;
+        }
+        callback(null, true);
+      },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload admin-curated gallery images for a product',
+    description:
+      'The first image ever uploaded for a product becomes its catalog thumbnail. Up to 5 per call, matching the PRD gallery cap.',
+  })
+  @ApiResponse({ status: 201, type: [AdminMediaDto] })
+  @ApiResponse({ status: 404, description: 'Product not found' })
+  @ApiResponse({ status: 415, description: 'Unsupported image type' })
+  uploadProductMedia(
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFiles() images: Express.Multer.File[] = [],
+  ) {
+    return this.admin.attachProductMedia(id, images);
   }
 
   @Patch('products/:id')

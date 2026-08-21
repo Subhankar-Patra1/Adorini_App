@@ -19,10 +19,10 @@ export type OtpVerifyOutcome =
 /**
  * Issues and verifies phone OTPs.
  *
- * We generate the code ourselves and use MSG91 purely for delivery. That keeps
- * expiry, attempt limits and lockout under our control, and means verification
- * is a local Redis read rather than a 7-second round trip to MSG91 on the
- * login critical path.
+ * We generate the code ourselves and use Meta's WhatsApp Cloud API purely for
+ * delivery. That keeps expiry, attempt limits and lockout under our control,
+ * and means verification is a local Redis read rather than a round trip to
+ * Meta on the login critical path.
  *
  * The stored value is an HMAC keyed with `JWT_SECRET`, not a bare hash. A
  * 6-digit code has only a million possibilities, so a plain SHA-256 of it is

@@ -6,7 +6,7 @@ import { WebhookProvider } from '../../common/enums/domain.enums';
 /**
  * Ledger of externally-delivered webhook events that have already been applied.
  *
- * @GUARD Risk #1 (CRITICAL): Cashfree, Delhivery and MSG91 all retry delivery
+ * @GUARD Risk #1 (CRITICAL): Cashfree, Delhivery and Meta all retry delivery
  * on timeout or non-2xx, so the same event arrives more than once as a matter
  * of routine — not as an edge case. Processing a duplicate `DELIVERED` event
  * would credit a ₹100 referral twice; a duplicate payment event would advance

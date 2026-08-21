@@ -12,7 +12,7 @@ import { Referral, User, Wallet } from '../../../database/entities';
 import { ReferralOutcome } from '../referral-status';
 import { ReferralStatus } from '../../../common/enums/domain.enums';
 import { OAuthService, type GoogleUserPayload } from '../../../providers/oauth/oauth.service';
-import { SmsService } from '../../../providers/sms/sms.service';
+import { WhatsAppService } from '../../../providers/whatsapp/whatsapp.service';
 
 function uniqueViolation(): QueryFailedError {
   const error = new QueryFailedError('INSERT', [], new Error('duplicate key'));
@@ -106,7 +106,7 @@ describe('AuthService', () => {
         { provide: OtpService, useValue: { requestOtp: otpRequest, verifyOtp: otpVerify } },
         { provide: TokenService, useValue: { issueTokens } },
         { provide: RegistrationService, useValue: { issue: regIssue, consume: regConsume } },
-        { provide: SmsService, useValue: { sendOtp } },
+        { provide: WhatsAppService, useValue: { sendOtp } },
         { provide: OAuthService, useValue: { verifyGoogleIdToken } },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(10000) } },
       ],

@@ -24,7 +24,7 @@ export type IngestResult<T> = { status: 'processed'; result: T } | { status: 'du
 /**
  * Applies a webhook exactly once.
  *
- * @GUARD Risk #1 (CRITICAL): Cashfree, Delhivery and MSG91 all redeliver on
+ * @GUARD Risk #1 (CRITICAL): Cashfree, Delhivery and Meta all redeliver on
  * timeout or non-2xx, so the same event arriving twice is routine traffic, not
  * an edge case. A duplicate `Delivered` would pay a ₹100 referral twice.
  *

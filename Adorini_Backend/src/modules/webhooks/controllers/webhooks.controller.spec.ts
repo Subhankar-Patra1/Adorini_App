@@ -9,11 +9,10 @@ import { PaymentsService } from '../../../providers/payments/payments.service';
 import { WebhooksService } from '../services/webhooks.service';
 
 const DELHIVERY_TOKEN = 'd'.repeat(24);
-const MSG91_TOKEN = 'm'.repeat(24);
 
 describe('WebhooksController', () => {
   let controller: WebhooksController;
-  let webhooks: { handleCashfree: jest.Mock; handleDelhivery: jest.Mock; handleMsg91: jest.Mock };
+  let webhooks: { handleCashfree: jest.Mock; handleDelhivery: jest.Mock };
   let payments: { verifyWebhookSignature: jest.Mock };
 
   const rawRequest = (body: unknown) =>
@@ -28,13 +27,12 @@ describe('WebhooksController', () => {
     webhooks = {
       handleCashfree: jest.fn().mockResolvedValue('processed'),
       handleDelhivery: jest.fn().mockResolvedValue('processed'),
-      handleMsg91: jest.fn().mockResolvedValue('processed'),
     };
     payments = { verifyWebhookSignature: jest.fn().mockReturnValue(true) };
 
     const config: Partial<ConfigService<Env, true>> = {
       get: jest.fn((key: string) =>
-        key === 'DELHIVERY_WEBHOOK_TOKEN' ? DELHIVERY_TOKEN : MSG91_TOKEN,
+        key === 'DELHIVERY_WEBHOOK_TOKEN' ? DELHIVERY_TOKEN : '',
       ) as never,
     };
 
@@ -111,35 +109,14 @@ describe('WebhooksController', () => {
       expect(webhooks.handleDelhivery).toHaveBeenCalled();
     });
 
-    it.each([undefined, '', 'wrong-token', 'd'.repeat(23), MSG91_TOKEN])(
-      'rejects token %s',
-      async (token) => {
-        await expect(controller.delhivery(body, token)).rejects.toThrow(UnauthorizedException);
-        expect(webhooks.handleDelhivery).not.toHaveBeenCalled();
-      },
-    );
+    it.each([undefined, '', 'wrong-token', 'd'.repeat(23)])('rejects token %s', async (token) => {
+      await expect(controller.delhivery(body, token)).rejects.toThrow(UnauthorizedException);
+      expect(webhooks.handleDelhivery).not.toHaveBeenCalled();
+    });
 
     it('rejects a malformed payload even with a valid token', async () => {
       await expect(controller.delhivery({ nope: true }, DELHIVERY_TOKEN)).rejects.toThrow();
       expect(webhooks.handleDelhivery).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('msg91', () => {
-    it('accepts a request carrying the configured token', async () => {
-      const result = await controller.msg91({ requestId: 'r1' }, MSG91_TOKEN);
-
-      expect(result).toEqual({ outcome: 'processed' });
-    });
-
-    it('does not accept the Delhivery token on the MSG91 route', async () => {
-      await expect(controller.msg91({ requestId: 'r1' }, DELHIVERY_TOKEN)).rejects.toThrow(
-        UnauthorizedException,
-      );
-    });
-
-    it('rejects a payload with no de-duplication key', async () => {
-      await expect(controller.msg91({ report: [] }, MSG91_TOKEN)).rejects.toThrow();
     });
   });
 });

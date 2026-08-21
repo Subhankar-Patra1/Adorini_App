@@ -1,0 +1,4 @@
+{
+  "_note": "USB + `adb reverse tcp:3000 tcp:3000` makes the phone's own localhost hit this PC. Switch to http://<pc-lan-ip>:3000/api if running over Wi-Fi instead.",
+  "API_BASE_URL": "http://localhost:3000/api"
+}

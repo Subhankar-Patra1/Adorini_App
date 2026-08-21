@@ -11,7 +11,7 @@ import { TokenService } from './services/token.service';
 import { Referral, RefreshToken, User, Wallet } from '../../database/entities';
 import { durationToSeconds } from '../../common/utils/duration.util';
 import { OAuthModule } from '../../providers/oauth/oauth.module';
-import { SmsModule } from '../../providers/sms/sms.module';
+import { WhatsappModule } from '../../providers/whatsapp/whatsapp.module';
 import type { Env } from '../../config/env.validation';
 
 @Module({
@@ -27,7 +27,7 @@ import type { Env } from '../../config/env.validation';
         },
       }),
     }),
-    SmsModule,
+    WhatsappModule,
     OAuthModule,
     // RedisModule is @Global and imported once in AppModule.
   ],

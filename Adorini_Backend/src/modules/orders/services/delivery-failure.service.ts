@@ -12,7 +12,7 @@ import type { Env } from '../../../config/env.validation';
 import { Order } from '../../../database/entities/order.entity';
 import { User } from '../../../database/entities/user.entity';
 import { LogisticsService } from '../../../providers/logistics/logistics.service';
-import { SmsService } from '../../../providers/sms/sms.service';
+import { WhatsAppService } from '../../../providers/whatsapp/whatsapp.service';
 
 export type ReattemptOutcome =
   | { requested: true; orderNumber: string; attemptsUsed: number }
@@ -50,13 +50,13 @@ export class DeliveryFailureService {
      */
     private readonly ordersService: OrdersService,
     private readonly logistics: LogisticsService,
-    private readonly sms: SmsService,
+    private readonly whatsapp: WhatsAppService,
     private readonly dataSource: DataSource,
     config: ConfigService<Env, true>,
   ) {
     this.responseWindowHours = config.get('DELIVERY_RESPONSE_WINDOW_HOURS', { infer: true });
     this.maxAttempts = config.get('MAX_DELIVERY_ATTEMPTS', { infer: true });
-    this.retryTemplate = config.get('MSG91_DELIVERY_RETRY_TEMPLATE', { infer: true });
+    this.retryTemplate = config.get('WHATSAPP_DELIVERY_RETRY_TEMPLATE', { infer: true });
   }
 
   /**
@@ -90,9 +90,10 @@ export class DeliveryFailureService {
    * Asks the buyer, over WhatsApp, whether they still want the parcel.
    *
    * Deliberately never throws: this runs after the webhook transaction has
-   * committed, and MSG91 being unreachable must not turn a correctly-recorded
-   * delivery failure into a failed webhook that Delhivery then redelivers. The
-   * buyer can still act from the app, and the sweep still protects the stock.
+   * committed, and Meta's API being unreachable must not turn a
+   * correctly-recorded delivery failure into a failed webhook that Delhivery
+   * then redelivers. The buyer can still act from the app, and the sweep
+   * still protects the stock.
    */
   async promptBuyer(order: Order): Promise<void> {
     if (order.deliveryAttempts >= this.maxAttempts) {
@@ -105,7 +106,7 @@ export class DeliveryFailureService {
     try {
       const user = await this.users.findOneByOrFail({ id: order.userId });
 
-      await this.sms.whatsappNotify(user.phone, this.retryTemplate, {
+      await this.whatsapp.notifyTemplate(user.phone, this.retryTemplate, {
         body_1: order.orderNumber,
         body_2: String(this.responseWindowHours),
       });

@@ -8,7 +8,7 @@
 
 /**
  * Order lifecycle. `PENDING_VERIFICATION` only occurs on COD orders, which must
- * pass an MSG91 OTP intent check before dispatch. Transition enforcement lives
+ * pass a WhatsApp OTP intent check before dispatch. Transition enforcement lives
  * in the orders module (Phase 4); this enum only fixes the vocabulary.
  */
 export enum OrderStatus {
@@ -112,7 +112,7 @@ export enum SizeEnquiryStatus {
 export enum WebhookProvider {
   CASHFREE = 'CASHFREE',
   DELHIVERY = 'DELHIVERY',
-  MSG91 = 'MSG91',
+  WHATSAPP = 'WHATSAPP',
 }
 
 export enum WalletTransactionType {

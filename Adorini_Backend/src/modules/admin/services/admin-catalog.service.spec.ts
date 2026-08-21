@@ -1,14 +1,17 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 
 import { AdminCatalogService } from './admin-catalog.service';
-import { FabricType } from '../../../common/enums/domain.enums';
+import { FabricType, MediaProvenance, MediaType } from '../../../common/enums/domain.enums';
 import { Brand } from '../../../database/entities/brand.entity';
 import { Category } from '../../../database/entities/category.entity';
+import { MediaAsset } from '../../../database/entities/media-asset.entity';
 import { Product } from '../../../database/entities/product.entity';
 import { ProductVariant } from '../../../database/entities/product-variant.entity';
 import { SizeEnquiry } from '../../../database/entities/size-enquiry.entity';
+import { StorageService } from '../../../providers/storage/storage.service';
 import type { CreateProductDto } from '../dto/admin.dto';
 
 /** A well-formed rigid chart, matching what the seeds generate. */
@@ -35,7 +38,13 @@ describe('AdminCatalogService', () => {
   let productsCreate: jest.Mock;
   let variantsCountBy: jest.Mock;
   let categoriesCountBy: jest.Mock;
+  let categoriesFind: jest.Mock;
   let brandsCountBy: jest.Mock;
+  let brandsFind: jest.Mock;
+  let mediaCountBy: jest.Mock;
+  let mediaCreate: jest.Mock;
+  let mediaSave: jest.Mock;
+  let storageUploadFile: jest.Mock;
 
   const baseDto = (): CreateProductDto => ({
     slug: 'test-kurti',
@@ -58,7 +67,17 @@ describe('AdminCatalogService', () => {
     productsCreate = jest.fn().mockImplementation((p: unknown) => p);
     variantsCountBy = jest.fn().mockResolvedValue(0);
     categoriesCountBy = jest.fn().mockResolvedValue(1);
+    categoriesFind = jest.fn().mockResolvedValue([]);
     brandsCountBy = jest.fn().mockResolvedValue(1);
+    brandsFind = jest.fn().mockResolvedValue([]);
+    mediaCountBy = jest.fn().mockResolvedValue(0);
+    mediaCreate = jest.fn().mockImplementation((m: unknown) => m);
+    mediaSave = jest
+      .fn()
+      .mockImplementation((rows: Record<string, unknown>[]) =>
+        Promise.resolve(rows.map((r, i) => ({ id: `media-${i}`, ...r }))),
+      );
+    storageUploadFile = jest.fn().mockResolvedValue('https://media.example.com/uploaded');
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -78,11 +97,26 @@ describe('AdminCatalogService', () => {
             createQueryBuilder: jest.fn(),
           },
         },
-        { provide: getRepositoryToken(Category), useValue: { countBy: categoriesCountBy } },
-        { provide: getRepositoryToken(Brand), useValue: { countBy: brandsCountBy } },
+        {
+          provide: getRepositoryToken(Category),
+          useValue: { countBy: categoriesCountBy, find: categoriesFind },
+        },
+        {
+          provide: getRepositoryToken(Brand),
+          useValue: { countBy: brandsCountBy, find: brandsFind },
+        },
         {
           provide: getRepositoryToken(SizeEnquiry),
           useValue: { find: jest.fn(), findOne: jest.fn(), save: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(MediaAsset),
+          useValue: { countBy: mediaCountBy, create: mediaCreate, save: mediaSave },
+        },
+        { provide: StorageService, useValue: { uploadFile: storageUploadFile } },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('https://media.example.com') },
         },
       ],
     }).compile();
@@ -182,6 +216,114 @@ describe('AdminCatalogService', () => {
       brandsCountBy.mockResolvedValue(0);
 
       await expect(service.createProduct(baseDto())).rejects.toThrow(/Unknown brand/);
+    });
+  });
+
+  describe('listCategoriesForAdmin / listBrandsForAdmin', () => {
+    it('includes the id and inactive rows, unlike the public catalog read', async () => {
+      categoriesFind.mockResolvedValue([
+        { id: 'c1', slug: 'kurtis', name: 'Kurti', isActive: true },
+        { id: 'c2', slug: 'retired', name: 'Retired', isActive: false },
+      ]);
+
+      await expect(service.listCategoriesForAdmin()).resolves.toEqual([
+        { id: 'c1', slug: 'kurtis', name: 'Kurti', isActive: true },
+        { id: 'c2', slug: 'retired', name: 'Retired', isActive: false },
+      ]);
+      expect(categoriesFind).toHaveBeenCalledWith({ order: { displayOrder: 'ASC' } });
+    });
+
+    it('brands: same shape', async () => {
+      brandsFind.mockResolvedValue([
+        { id: 'b1', slug: 'navranga', name: 'NAVRANGA', isActive: true },
+      ]);
+
+      await expect(service.listBrandsForAdmin()).resolves.toEqual([
+        { id: 'b1', slug: 'navranga', name: 'NAVRANGA', isActive: true },
+      ]);
+    });
+  });
+
+  describe('attachProductMedia', () => {
+    it('404s when the product does not exist', async () => {
+      productsFindOne.mockResolvedValue(null);
+
+      await expect(service.attachProductMedia('missing', [])).rejects.toThrow(NotFoundException);
+    });
+
+    it('returns nothing and touches no storage when no files are given', async () => {
+      productsFindOne.mockResolvedValue({ id: 'product-1' });
+
+      await expect(service.attachProductMedia('product-1', [])).resolves.toEqual([]);
+      expect(storageUploadFile).not.toHaveBeenCalled();
+    });
+
+    it('uploads each file and creates an ADMIN-provenance row starting at displayOrder 0', async () => {
+      productsFindOne.mockResolvedValue({ id: 'product-1' });
+      mediaCountBy.mockResolvedValue(0);
+
+      const files = [
+        { buffer: Buffer.from('a'), mimetype: 'image/jpeg' } as Express.Multer.File,
+        { buffer: Buffer.from('b'), mimetype: 'image/png' } as Express.Multer.File,
+      ];
+
+      const result = await service.attachProductMedia('product-1', files);
+
+      expect(storageUploadFile).toHaveBeenNthCalledWith(
+        1,
+        'products/product-1/0.jpg',
+        files[0].buffer,
+        'image/jpeg',
+      );
+      expect(storageUploadFile).toHaveBeenNthCalledWith(
+        2,
+        'products/product-1/1.png',
+        files[1].buffer,
+        'image/png',
+      );
+      expect(mediaCreate).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          productId: 'product-1',
+          objectKey: 'products/product-1/0.jpg',
+          type: MediaType.IMAGE,
+          provenance: MediaProvenance.ADMIN,
+          uploadedByUserId: null,
+          reviewId: null,
+          displayOrder: 0,
+        }),
+      );
+      expect(result).toEqual([
+        {
+          id: 'media-0',
+          url: 'https://media.example.com/products/product-1/0.jpg',
+          displayOrder: 0,
+        },
+        {
+          id: 'media-1',
+          url: 'https://media.example.com/products/product-1/1.png',
+          displayOrder: 1,
+        },
+      ]);
+    });
+
+    it('appends after existing media rather than overwriting displayOrder 0', async () => {
+      // A second upload call for the same product must not clobber the
+      // catalog thumbnail that CatalogService already reads from
+      // displayOrder 0 — only the first-ever image for a product should land there.
+      productsFindOne.mockResolvedValue({ id: 'product-1' });
+      mediaCountBy.mockResolvedValue(2);
+
+      const files = [{ buffer: Buffer.from('c'), mimetype: 'image/webp' } as Express.Multer.File];
+
+      const result = await service.attachProductMedia('product-1', files);
+
+      expect(storageUploadFile).toHaveBeenCalledWith(
+        'products/product-1/2.webp',
+        files[0].buffer,
+        'image/webp',
+      );
+      expect(result[0].displayOrder).toBe(2);
     });
   });
 });

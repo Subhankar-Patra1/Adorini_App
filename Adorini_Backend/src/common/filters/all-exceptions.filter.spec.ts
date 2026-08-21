@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
 import { RedisProviderError } from '../../providers/redis/redis.service';
-import { SmsProviderError } from '../../providers/sms/sms.service';
+import { WhatsAppProviderError } from '../../providers/whatsapp/whatsapp.service';
 import { StorageProviderError } from '../../providers/storage/storage.service';
 
 describe('AllExceptionsFilter', () => {
@@ -42,11 +42,11 @@ describe('AllExceptionsFilter', () => {
   }
 
   describe('provider errors get the right blame', () => {
-    it('maps an SMS outage to 503, not the caller’s fault', () => {
-      const body = bodyFor(new SmsProviderError('MSG91 timed out'));
+    it('maps a WhatsApp outage to 503, not the caller’s fault', () => {
+      const body = bodyFor(new WhatsAppProviderError('Meta timed out'));
 
       expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
-      expect(body.code).toBe('SMS_PROVIDER_UNAVAILABLE');
+      expect(body.code).toBe('WHATSAPP_PROVIDER_UNAVAILABLE');
     });
 
     it('maps a Google-rejected token to 401', () => {

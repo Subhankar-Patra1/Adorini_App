@@ -11,7 +11,7 @@ import { CartItem } from '../../database/entities/cart-item.entity';
 import { Order } from '../../database/entities/order.entity';
 import { ProductVariant } from '../../database/entities/product-variant.entity';
 import { RedisService } from '../../providers/redis/redis.service';
-import { SmsService } from '../../providers/sms/sms.service';
+import { WhatsAppService } from '../../providers/whatsapp/whatsapp.service';
 import { OAuthService } from '../../providers/oauth/oauth.service';
 
 loadDotenv();
@@ -19,9 +19,10 @@ loadDotenv();
 /**
  * The purchase journey, end to end, against real PostgreSQL and Redis.
  *
- * Only MSG91 and Google are stubbed — we cannot receive an SMS or mint a Google
- * token. Everything else is the real stack: the global guard, Zod validation,
- * TypeORM transactions, row locks, and the database's own check constraints.
+ * Only Meta's WhatsApp Cloud API and Google are stubbed — we cannot receive a
+ * WhatsApp message or mint a Google token. Everything else is the real stack:
+ * the global guard, Zod validation, TypeORM transactions, row locks, and the
+ * database's own check constraints.
  *
  * This is the test that would catch a break in the seam between cart, pricing,
  * stock and orders — none of which the per-service unit specs can see, because
@@ -56,13 +57,13 @@ describe('commerce journey (integration)', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(SmsService)
+      .overrideProvider(WhatsAppService)
       .useValue({
-        sendOtp: jest.fn((phone: string, code?: string) => {
-          if (code) sentCodes.set(phone, code);
+        sendOtp: jest.fn((phone: string, code: string) => {
+          sentCodes.set(phone, code);
           return Promise.resolve();
         }),
-        whatsappNotify: jest.fn().mockResolvedValue(undefined),
+        notifyTemplate: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(OAuthService)
       .useValue({ verifyGoogleIdToken: jest.fn() })

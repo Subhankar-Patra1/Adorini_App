@@ -12,7 +12,7 @@ import { ZodError } from 'zod';
 
 import { OAuthProviderError } from '../../providers/oauth/oauth.service';
 import { RedisProviderError } from '../../providers/redis/redis.service';
-import { SmsProviderError } from '../../providers/sms/sms.service';
+import { WhatsAppProviderError } from '../../providers/whatsapp/whatsapp.service';
 import { StorageProviderError } from '../../providers/storage/storage.service';
 
 /** Postgres unique-violation SQLSTATE. */
@@ -44,8 +44,8 @@ interface ErrorBody {
 /**
  * Translates every thrown error into a consistent HTTP response.
  *
- * The point is attribution. Without this, a Phase 3 provider error becomes a
- * generic 500 and the client — and our own dashboards — cannot tell "MSG91 is
+ * The point is attribution. Without this, a provider error becomes a
+ * generic 500 and the client — and our own dashboards — cannot tell "Meta is
  * down" (our problem, retry later) from "you sent a bad token" (the caller's
  * problem, do not retry). Both look identical, so both get handled wrongly.
  *
@@ -146,11 +146,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
-    if (exception instanceof SmsProviderError) {
+    if (exception instanceof WhatsAppProviderError) {
       return {
         status: HttpStatus.SERVICE_UNAVAILABLE,
-        code: 'SMS_PROVIDER_UNAVAILABLE',
-        message: 'Unable to send SMS right now. Please try again shortly.',
+        code: 'WHATSAPP_PROVIDER_UNAVAILABLE',
+        message: 'Unable to send a WhatsApp message right now. Please try again shortly.',
         logAsError: true,
       };
     }

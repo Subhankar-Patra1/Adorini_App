@@ -9,16 +9,17 @@ const validEnv: Record<string, string> = {
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'a'.repeat(32),
   GOOGLE_OAUTH_CLIENT_ID: 'client-id',
-  MSG91_AUTH_KEY: 'key',
-  MSG91_OTP_TEMPLATE_ID: 'template',
-  MSG91_SENDER_ID: 'sender',
-  MSG91_WHATSAPP_NUMBER: '919000000000',
+  WHATSAPP_ACCESS_TOKEN: 'token',
+  WHATSAPP_PHONE_NUMBER_ID: '123456789',
+  WHATSAPP_BUSINESS_ACCOUNT_ID: 'waba-1',
+  WHATSAPP_APP_SECRET: 'app-secret',
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: 'w'.repeat(24),
+  WHATSAPP_OTP_TEMPLATE_NAME: 'adorini_otp',
   CASHFREE_APP_ID: 'app',
   CASHFREE_SECRET_KEY: 'secret',
   CASHFREE_WEBHOOK_SECRET: 'webhook-secret',
   DELHIVERY_API_TOKEN: 'token',
   DELHIVERY_WEBHOOK_TOKEN: 'd'.repeat(24),
-  MSG91_WEBHOOK_TOKEN: 'm'.repeat(24),
   R2_ACCOUNT_ID: 'account',
   R2_ACCESS_KEY_ID: 'access-key',
   R2_SECRET_ACCESS_KEY: 'secret-key',
@@ -33,20 +34,15 @@ describe('validateEnv', () => {
 
   describe('production placeholder guard', () => {
     /**
-     * Motivated by a live finding: MSG91's OTP endpoint returns HTTP 200
-     * `{"type":"success"}` even for a completely invalid auth key and template
-     * id. A misconfigured SMS integration is therefore undetectable from its
-     * own responses — it just silently delivers nothing.
-     *
-     * Since the provider will not report the problem, the only place to catch
-     * it is before we ever call it. These tests are the guard that a broken
-     * deployment cannot start.
+     * A deployment carrying placeholder outbound-integration secrets must fail
+     * to start rather than run and silently deliver nothing. These tests are
+     * the guard that a broken deployment cannot start.
      */
     const productionEnv = { ...validEnv, NODE_ENV: 'production' };
 
     it('refuses to start in production with a placeholder secret', () => {
       expect(() =>
-        validateEnv({ ...productionEnv, MSG91_AUTH_KEY: 'placeholder-until-phase-3' }),
+        validateEnv({ ...productionEnv, WHATSAPP_ACCESS_TOKEN: 'placeholder-until-meta-live' }),
       ).toThrow(/placeholder credentials/i);
     });
 
@@ -56,7 +52,7 @@ describe('validateEnv', () => {
         try {
           validateEnv({
             ...productionEnv,
-            MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+            WHATSAPP_ACCESS_TOKEN: 'placeholder-until-meta-live',
             CASHFREE_SECRET_KEY: 'placeholder-until-phase-3',
             R2_ACCESS_KEY_ID: 'CHANGE_ME',
           });
@@ -66,7 +62,7 @@ describe('validateEnv', () => {
         }
       })();
 
-      expect(error?.message).toContain('MSG91_AUTH_KEY');
+      expect(error?.message).toContain('WHATSAPP_ACCESS_TOKEN');
       expect(error?.message).toContain('CASHFREE_SECRET_KEY');
       expect(error?.message).toContain('R2_ACCESS_KEY_ID');
     });
@@ -93,7 +89,7 @@ describe('validateEnv', () => {
       expect(() =>
         validateEnv({
           ...productionEnv,
-          MSG91_AUTH_KEY: '412345AbCdEfGh1234567890',
+          WHATSAPP_ACCESS_TOKEN: '412345AbCdEfGh1234567890',
           DELHIVERY_API_TOKEN: 'a1b2c3d4e5f6',
           CASHFREE_APP_ID: 'TEST10000000abcdef',
         }),
@@ -105,7 +101,7 @@ describe('validateEnv', () => {
       // tests would mean nobody runs them.
       const placeholders = {
         ...validEnv,
-        MSG91_AUTH_KEY: 'placeholder-until-phase-3',
+        WHATSAPP_ACCESS_TOKEN: 'placeholder-until-meta-live',
         CASHFREE_SECRET_KEY: 'placeholder-until-phase-3',
       };
 
@@ -144,7 +140,7 @@ describe('validateEnv', () => {
     );
   });
 
-  it.each(['DELHIVERY_WEBHOOK_TOKEN', 'MSG91_WEBHOOK_TOKEN'])(
+  it.each(['DELHIVERY_WEBHOOK_TOKEN', 'WHATSAPP_WEBHOOK_VERIFY_TOKEN'])(
     'rejects a %s shorter than 24 characters',
     (key) => {
       expect(() => validateEnv({ ...validEnv, [key]: 'too-short' })).toThrow(new RegExp(key));
@@ -159,12 +155,12 @@ describe('validateEnv', () => {
     'DATABASE_URL',
     'REDIS_URL',
     'JWT_SECRET',
-    'MSG91_AUTH_KEY',
+    'WHATSAPP_ACCESS_TOKEN',
     'CASHFREE_SECRET_KEY',
     'CASHFREE_WEBHOOK_SECRET',
     'DELHIVERY_API_TOKEN',
     'DELHIVERY_WEBHOOK_TOKEN',
-    'MSG91_WEBHOOK_TOKEN',
+    'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
     'R2_SECRET_ACCESS_KEY',
   ])('refuses to boot when required secret %s is missing', (key) => {
     const incomplete = { ...validEnv };

@@ -4,7 +4,7 @@ import { CreateDateColumn, PrimaryGeneratedColumn, UpdateDateColumn } from 'type
  * Shared identity and audit columns.
  *
  * UUID primary keys rather than sequential integers: order and user IDs travel
- * to Cashfree, Delhivery and MSG91, and appear in webhook payloads and support
+ * to Cashfree, Delhivery and Meta, and appear in webhook payloads and support
  * conversations. A sequential ID would leak order volume to anyone who placed
  * two orders a week apart.
  *

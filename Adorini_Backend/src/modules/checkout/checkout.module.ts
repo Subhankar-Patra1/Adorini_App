@@ -15,7 +15,7 @@ import { AuthModule } from '../auth/auth.module';
 import { CartModule } from '../cart/cart.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { PaymentsModule } from '../../providers/payments/payments.module';
-import { SmsModule } from '../../providers/sms/sms.module';
+import { WhatsappModule } from '../../providers/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -36,7 +36,7 @@ import { SmsModule } from '../../providers/sms/sms.module';
     // AuthModule exports OtpService — COD intent verification reuses the same
     // OTP machinery as login, including its attempt caps and cooldowns.
     AuthModule,
-    SmsModule,
+    WhatsappModule,
     PaymentsModule,
   ],
   controllers: [CheckoutController],

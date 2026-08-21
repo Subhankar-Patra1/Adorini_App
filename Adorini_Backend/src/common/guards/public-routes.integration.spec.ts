@@ -15,7 +15,7 @@ loadDotenv();
  * alternative fails by silently exposing data. But it has a sharp edge, and the
  * project has already been cut by it: `catalog`, `pdp` and `webhooks` shipped
  * without `@Public()`, which meant the **entire storefront returned 401** and
- * every Cashfree, Delhivery and MSG91 callback was rejected before reaching its
+ * every Cashfree, Delhivery and Meta callback was rejected before reaching its
  * own signature check. Providers would have retried, given up, and left
  * payments unconfirmed and referrals unpaid.
  *
@@ -81,7 +81,7 @@ describe('public route surface', () => {
      * per provider. What must not happen is the *global* guard rejecting them
      * first, since Cashfree and Delhivery cannot present an Adorini token.
      */
-    it.each(['cashfree', 'delhivery', 'msg91'])(
+    it.each(['cashfree', 'delhivery'])(
       '/api/webhooks/%s is not blocked by the global guard',
       async (provider) => {
         const res = await api().post(`/api/webhooks/${provider}`).send({});
@@ -89,6 +89,15 @@ describe('public route surface', () => {
         expect(res.body).not.toMatchObject({ message: BLOCKED_BY_GLOBAL_GUARD });
       },
     );
+
+    it('/api/webhooks/whatsapp is not blocked by the global guard', async () => {
+      // Lives on its own controller with HMAC-signature auth rather than the
+      // shared-secret scheme the others use — this only proves @Public() still
+      // applies, not that an unsigned request succeeds.
+      const res = await api().post('/api/webhooks/whatsapp').send({});
+
+      expect(res.body).not.toMatchObject({ message: BLOCKED_BY_GLOBAL_GUARD });
+    });
 
     it('still rejects a webhook with the wrong shared secret', async () => {
       const res = await api()

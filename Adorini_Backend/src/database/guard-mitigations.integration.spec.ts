@@ -76,7 +76,7 @@ describe('@GUARD mitigations (Phase 2 — data model)', () => {
         webhookEventId: 'shared-id-1',
       });
       await repo.insert({
-        webhookProvider: WebhookProvider.MSG91,
+        webhookProvider: WebhookProvider.WHATSAPP,
         webhookEventId: 'shared-id-1',
       });
 

@@ -66,7 +66,9 @@ export class AddFreeSizeProducts1786700000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TRIGGER IF EXISTS trg_free_size_single_size ON "product_variants"`);
+    await queryRunner.query(
+      `DROP TRIGGER IF EXISTS trg_free_size_single_size ON "product_variants"`,
+    );
     await queryRunner.query(`DROP FUNCTION IF EXISTS assert_free_size_single_size()`);
     await queryRunner.query(`ALTER TABLE "products" DROP COLUMN "is_free_size"`);
   }

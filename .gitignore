@@ -16,8 +16,14 @@ Thumbs.db
 .env.local
 .env.*.local
 *.env
+# `*.env` does not catch a suffixed backup like `.env.bak-before-values`, and
+# such a file holds the same real credentials the live `.env` does.
+.env.*
+!.env.example
 **/env/local.json
 Adorini_Frontend/env/local.json
+# Machine- and session-specific backend URLs (e.g. a temporary tunnel address).
+**/env/tunnel.json
 
 # Dependencies and Build Outputs
 node_modules/

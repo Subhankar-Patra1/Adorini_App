@@ -24,23 +24,23 @@ import { validateEnv } from '../../config/env.validation';
 import { OAuthProviderError, OAuthService } from '../../providers/oauth/oauth.service';
 import { RedisModule } from '../../providers/redis/redis.module';
 import { RedisService } from '../../providers/redis/redis.service';
-import { SmsService } from '../../providers/sms/sms.service';
+import { WhatsAppService } from '../../providers/whatsapp/whatsapp.service';
 import { UsersModule } from '../users/users.module';
 
 /**
  * End-to-end auth over real HTTP, against live PostgreSQL and Redis.
  *
- * Only the two outbound integrations are stubbed — MSG91 (we would be paying
- * for SMS and could not read the code) and Google (we cannot mint a real ID
- * token). Everything else is the actual stack: the global guard, the Zod pipe,
- * the exception filter, TypeORM, and the OTP store. The unit specs prove each
- * piece; this proves they are wired together.
+ * Only the two outbound integrations are stubbed — Meta's WhatsApp Cloud API
+ * (we would be paying for messages and could not read the code) and Google
+ * (we cannot mint a real ID token). Everything else is the actual stack: the
+ * global guard, the Zod pipe, the exception filter, TypeORM, and the OTP
+ * store. The unit specs prove each piece; this proves they are wired together.
  */
 describe('auth (integration)', () => {
   let app: INestApplication;
   let ds: DataSource;
 
-  /** Captures the code MSG91 would have delivered. */
+  /** Captures the code Meta would have delivered over WhatsApp. */
   const sentCodes = new Map<string, string>();
   const verifyGoogleIdToken = jest.fn();
 
@@ -79,13 +79,13 @@ describe('auth (integration)', () => {
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],
     })
-      .overrideProvider(SmsService)
+      .overrideProvider(WhatsAppService)
       .useValue({
-        sendOtp: jest.fn((phone: string, code?: string) => {
-          if (code) sentCodes.set(phone, code);
+        sendOtp: jest.fn((phone: string, code: string) => {
+          sentCodes.set(phone, code);
           return Promise.resolve();
         }),
-        whatsappNotify: jest.fn().mockResolvedValue(undefined),
+        notifyTemplate: jest.fn().mockResolvedValue(undefined),
       })
       .overrideProvider(OAuthService)
       .useValue({ verifyGoogleIdToken })
@@ -138,7 +138,7 @@ describe('auth (integration)', () => {
     await api().post('/api/auth/otp/request').send({ phone }).expect(202);
 
     // The code is captured under the *normalised* number, since that is what
-    // the service passes to MSG91 — so the helper has to normalise too rather
+    // the service passes to Meta — so the helper has to normalise too rather
     // than assume the caller passed a bare 10-digit number.
     const normalised = normalisePhone(phone);
     const code = normalised ? sentCodes.get(normalised) : undefined;

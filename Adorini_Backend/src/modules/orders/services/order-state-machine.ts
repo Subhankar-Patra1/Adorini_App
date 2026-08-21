@@ -89,8 +89,8 @@ export function assertTransition(from: OrderStatus, to: OrderStatus, orderId: st
  * Where a successful payment should land an order.
  *
  * COD cannot confirm on payment — there is no payment until the parcel arrives —
- * so it goes to intent verification instead, which is what the MSG91 OTP step
- * exists to clear.
+ * so it goes to intent verification instead, which is what the WhatsApp OTP
+ * step exists to clear.
  */
 export function statusAfterSuccessfulPayment(paymentMethod: PaymentMethod): OrderStatus {
   return paymentMethod === PaymentMethod.COD

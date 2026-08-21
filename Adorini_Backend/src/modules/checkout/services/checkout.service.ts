@@ -27,7 +27,7 @@ import { WalletTransaction } from '../../../database/entities/wallet-transaction
 import { CartService } from '../../cart/services/cart.service';
 import { PricingService } from '../../cart/services/pricing.service';
 import { OtpService } from '../../auth/services/otp.service';
-import { SmsService } from '../../../providers/sms/sms.service';
+import { WhatsAppService } from '../../../providers/whatsapp/whatsapp.service';
 import { PaymentsService } from '../../../providers/payments/payments.service';
 import { CouponsService } from '../../coupons/services/coupons.service';
 import type { Env } from '../../../config/env.validation';
@@ -68,7 +68,7 @@ export class CheckoutService {
     private readonly pricing: PricingService,
     private readonly coupons: CouponsService,
     private readonly otp: OtpService,
-    private readonly sms: SmsService,
+    private readonly whatsapp: WhatsAppService,
     private readonly payments: PaymentsService,
     config: ConfigService<Env, true>,
   ) {
@@ -327,7 +327,7 @@ export class CheckoutService {
   /**
    * Everything after the order row exists.
    *
-   * Deliberately outside the placement transaction: it calls MSG91 and
+   * Deliberately outside the placement transaction: it calls Meta and
    * Cashfree, and an external timeout must not roll back an order whose stock
    * is already committed. If the OTP send fails the order still exists and the
    * buyer can ask for a new code.
@@ -399,7 +399,7 @@ export class CheckoutService {
       });
     }
 
-    await this.sms.sendOtp(phone, outcome.otp);
+    await this.whatsapp.sendOtp(phone, outcome.otp);
     this.logger.log(`COD verification code sent for ${order.orderNumber} to ${maskPhone(phone)}`);
 
     return { expiresInSeconds: outcome.expiresInSeconds };

@@ -106,6 +106,26 @@ export const adminVariantSchema = z.object({
   isActive: z.boolean(),
 });
 
+export const adminMediaSchema = z.object({
+  id: z.uuid(),
+  url: z.string(),
+  displayOrder: z.number().int(),
+});
+
+export const adminCategorySchema = z.object({
+  id: z.uuid(),
+  slug: z.string(),
+  name: z.string(),
+  isActive: z.boolean(),
+});
+
+export const adminBrandSchema = z.object({
+  id: z.uuid(),
+  slug: z.string(),
+  name: z.string(),
+  isActive: z.boolean(),
+});
+
 export const adminEnquirySchema = z.object({
   id: z.uuid(),
   productId: z.uuid(),
@@ -121,3 +141,6 @@ export const adminEnquirySchema = z.object({
 export class AdminProductDto extends createZodDto(adminProductSchema) {}
 export class AdminVariantDto extends createZodDto(adminVariantSchema) {}
 export class AdminEnquiryDto extends createZodDto(adminEnquirySchema) {}
+export class AdminMediaDto extends createZodDto(adminMediaSchema) {}
+export class AdminCategoryDto extends createZodDto(adminCategorySchema) {}
+export class AdminBrandDto extends createZodDto(adminBrandSchema) {}

@@ -43,7 +43,7 @@ describe('WhatsappBotService', () => {
 
       expect(idempotency.ingest).toHaveBeenCalledWith(
         expect.objectContaining({
-          provider: WebhookProvider.MSG91,
+          provider: WebhookProvider.WHATSAPP,
           eventId: 'inbound:msg-1',
           eventType: 'WHATSAPP_INBOUND',
         }),
@@ -52,7 +52,7 @@ describe('WhatsappBotService', () => {
     });
 
     it('takes no action on a replayed message', async () => {
-      // MSG91 redelivers on non-2xx; a replayed "yes" must not book a second
+      // Meta redelivers on non-2xx; a replayed "yes" must not book a second
       // courier reattempt.
       idempotency.ingest.mockResolvedValue({ status: 'duplicate' });
 
@@ -87,7 +87,7 @@ describe('WhatsappBotService', () => {
     });
 
     it('normalises the sender number before matching the account', async () => {
-      // `users.phone` is stored E.164-without-plus; MSG91 may report otherwise.
+      // `users.phone` is stored E.164-without-plus; Meta may report otherwise.
       await service.handleInbound(message('yes', '+91 98765 43210'));
 
       expect(deliveryFailures.requestReattemptByPhone).toHaveBeenCalledWith('919876543210');

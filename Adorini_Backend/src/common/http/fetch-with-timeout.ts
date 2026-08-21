@@ -1,7 +1,7 @@
 /**
  * Outbound HTTP with a mandatory deadline.
  *
- * Every Adorini provider calls a third party over the public internet — MSG91,
+ * Every Adorini provider calls a third party over the public internet — Meta,
  * Delhivery, Google, Cashfree. `fetch` has **no default timeout**: if an
  * upstream accepts the TCP connection and then never responds, the request
  * hangs until the socket dies, which can be minutes.

@@ -60,7 +60,7 @@ export const envSchema = z.object({
         : [],
     ),
 
-  // ---- OTP (self-managed: we generate the code, MSG91 only delivers it) ----
+  // ---- OTP (self-managed: we generate the code, WhatsApp only delivers it) ----
   /** How long a code stays valid. Long enough for a slow SMS, short enough to limit exposure. */
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   /**
@@ -79,20 +79,47 @@ export const envSchema = z.object({
    */
   REGISTRATION_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(600),
 
-  // ---- MSG91 (direct REST v5 — see ADR-004) ----
-  MSG91_AUTH_KEY: z.string().min(1),
-  MSG91_OTP_TEMPLATE_ID: z.string().min(1),
-  /** 6-character DLT-approved SMS sender header, e.g. `ADORNI`. */
-  MSG91_SENDER_ID: z.string().min(1),
+  // ---- Meta WhatsApp Business Cloud API (direct REST, no BSP) ----
   /**
-   * WhatsApp Business phone number registered with MSG91, in international
-   * format without `+` (e.g. `919876543210`).
-   *
-   * Deliberately separate from `MSG91_SENDER_ID` — that is an SMS sender
-   * header, this is a phone number on a different channel. Passing one where
-   * the other belongs fails only against a live account, never in tests.
+   * Permanent System User access token (Business Settings → System Users) —
+   * deliberately NOT the 24h temporary token the developer console hands out
+   * for quick testing, which would expire in production without warning.
    */
-  MSG91_WHATSAPP_NUMBER: z.string().min(1),
+  WHATSAPP_ACCESS_TOKEN: z.string().min(1),
+  /** Graph API "phone number ID" object id — not the WhatsApp number string itself. */
+  WHATSAPP_PHONE_NUMBER_ID: z.string().min(1),
+  /**
+   * WhatsApp Business Account id. Not read by any send/receive call — Graph
+   * API sends only need `WHATSAPP_PHONE_NUMBER_ID` — kept here because
+   * template-management tooling and the webhook-subscription screen both key
+   * off it, and it is cheap to have on hand rather than re-deriving it from
+   * the dashboard on the next incident.
+   */
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().min(1),
+  /** Meta app secret. HMACs the `X-Hub-Signature-256` header on inbound webhooks. */
+  WHATSAPP_APP_SECRET: z.string().min(1),
+  /**
+   * Arbitrary string this app chooses and Meta echoes back during the webhook
+   * verification handshake (`hub.verify_token`). Not a credential Meta
+   * issues — generated locally, pasted into the Meta dashboard's webhook
+   * configuration screen once.
+   */
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z
+    .string()
+    .min(24, { error: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN must be at least 24 characters' }),
+  /** Graph API version. Meta deprecates versions on a rolling schedule; bump via env, not a redeploy. */
+  WHATSAPP_API_VERSION: z.string().default('v21.0'),
+  /**
+   * Approved Authentication-category template used for OTP delivery.
+   *
+   * OTP delivery is WhatsApp-only — MSG91 and its SMS fallback have been
+   * dropped entirely. A phone number with no active WhatsApp account cannot
+   * receive a code and cannot log in or complete a COD checkout. See the
+   * known-gap note on `WhatsAppService.sendOtp`.
+   */
+  WHATSAPP_OTP_TEMPLATE_NAME: z.string().min(1),
+  /** Template language code, e.g. `en` — must match what was submitted for approval. */
+  WHATSAPP_TEMPLATE_LANGUAGE: z.string().default('en'),
 
   // ---- Cashfree (cashfree-pg SDK — see ADR-004) ----
   CASHFREE_APP_ID: z.string().min(1),
@@ -105,20 +132,17 @@ export const envSchema = z.object({
   DELHIVERY_BASE_URL: z.url().default('https://track.delhivery.com'),
 
   /**
-   * Shared secrets for the inbound Delhivery and MSG91 webhook endpoints.
+   * Shared secret for the inbound Delhivery webhook endpoint.
    *
-   * Neither provider signs its callbacks the way Cashfree does (HMAC over the
-   * raw body), so a bearer token we generate and register in their dashboards is
-   * the available authentication. These endpoints move order state and trigger
-   * wallet credits, so leaving them open is not an option — hence required, and
+   * Delhivery does not sign its callbacks the way Cashfree (or now Meta) does
+   * with an HMAC over the raw body, so a bearer token we generate and register
+   * in its dashboard is the available authentication. This endpoint moves
+   * order state, so leaving it open is not an option — hence required, and
    * long enough that guessing is not a strategy.
    */
   DELHIVERY_WEBHOOK_TOKEN: z
     .string()
     .min(24, { error: 'DELHIVERY_WEBHOOK_TOKEN must be at least 24 characters' }),
-  MSG91_WEBHOOK_TOKEN: z
-    .string()
-    .min(24, { error: 'MSG91_WEBHOOK_TOKEN must be at least 24 characters' }),
 
   // ---- Cloudflare R2 (S3-compatible — see ADR-003) ----
   R2_ACCOUNT_ID: z.string().min(1),
@@ -168,12 +192,12 @@ export const envSchema = z.object({
   MAX_DELIVERY_ATTEMPTS: z.coerce.number().int().positive().default(3),
 
   /**
-   * MSG91 WhatsApp template for the failed-delivery prompt. WhatsApp requires
-   * business-initiated messages to use a Meta-approved template, so this cannot
-   * be free text — the template must be registered before the flow works
-   * against a live account.
+   * Approved Utility-category WhatsApp template for the failed-delivery
+   * prompt. WhatsApp requires business-initiated messages to use a
+   * Meta-approved template, so this cannot be free text — the template must
+   * be submitted and approved before the flow works against a live account.
    */
-  MSG91_DELIVERY_RETRY_TEMPLATE: z.string().min(1).default('adorini_delivery_retry'),
+  WHATSAPP_DELIVERY_RETRY_TEMPLATE: z.string().min(1).default('adorini_delivery_retry'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -186,18 +210,18 @@ export type Env = z.infer<typeof envSchema>;
 const PRODUCTION_REQUIRED_SECRETS = [
   'JWT_SECRET',
   'GOOGLE_OAUTH_CLIENT_ID',
-  'MSG91_AUTH_KEY',
-  'MSG91_OTP_TEMPLATE_ID',
-  'MSG91_SENDER_ID',
-  'MSG91_WHATSAPP_NUMBER',
+  'WHATSAPP_ACCESS_TOKEN',
+  'WHATSAPP_PHONE_NUMBER_ID',
+  'WHATSAPP_APP_SECRET',
+  'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+  'WHATSAPP_OTP_TEMPLATE_NAME',
   'CASHFREE_APP_ID',
   'CASHFREE_SECRET_KEY',
   'CASHFREE_WEBHOOK_SECRET',
   'DELHIVERY_API_TOKEN',
-  // Delhivery and MSG91 do not sign their callbacks, so these shared secrets
-  // are the only thing separating a real webhook from a forged one.
+  // Delhivery does not sign its callbacks, so this shared secret is the only
+  // thing separating a real webhook from a forged one.
   'DELHIVERY_WEBHOOK_TOKEN',
-  'MSG91_WEBHOOK_TOKEN',
   'R2_ACCOUNT_ID',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
@@ -206,15 +230,15 @@ const PRODUCTION_REQUIRED_SECRETS = [
 /**
  * Values that are obviously not real credentials.
  *
- * Motivated by a live finding: MSG91's OTP endpoint answers **HTTP 200
- * `{"type":"success"}` even for a completely invalid auth key and template id**.
- * A misconfigured SMS integration therefore looks perfectly healthy from its
- * own responses — no amount of provider-side error handling can detect it,
- * because the provider reports success.
- *
- * Since the provider will not tell us, the check has to happen before we ever
- * call it: a deployment carrying placeholder credentials must fail to start
- * rather than run and quietly deliver no OTPs at all.
+ * Originally motivated by a live finding against MSG91 (since dropped): its
+ * OTP endpoint answered **HTTP 200 `{"type":"success"}` even for a completely
+ * invalid auth key**, so a misconfigured integration looked perfectly healthy
+ * from its own responses. Meta's Graph API returns real error objects on bad
+ * credentials, so it is not as silent a failure mode — but the discipline of
+ * refusing to boot production with placeholder secrets is kept regardless:
+ * the check has to happen before we ever call an outbound integration, so a
+ * deployment carrying placeholder credentials fails to start rather than
+ * running and quietly delivering no OTPs at all.
  */
 const PLACEHOLDER_PATTERNS = [
   /placeholder/i,
@@ -260,9 +284,9 @@ export function validateEnv(raw: Record<string, unknown>): Env {
           'Refusing to start in production with placeholder credentials:',
           ...offenders.map((key) => `  - ${key}`),
           '',
-          'These are outbound integration secrets. MSG91 in particular reports',
-          'success for invalid credentials, so a placeholder here would not',
-          'surface as an error — OTPs would simply never arrive.',
+          'These are outbound integration secrets. A placeholder here would not',
+          'fail loudly until the first real send attempt — OTPs and WhatsApp',
+          'notifications would simply never arrive in the meantime.',
         ].join('\n'),
       );
     }

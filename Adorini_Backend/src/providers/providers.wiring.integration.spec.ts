@@ -9,8 +9,8 @@ import { PaymentsModule } from './payments/payments.module';
 import { PaymentsService } from './payments/payments.service';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
-import { SmsModule } from './sms/sms.module';
-import { SmsService } from './sms/sms.service';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { WhatsAppService } from './whatsapp/whatsapp.service';
 import { StorageModule } from './storage/storage.module';
 import { StorageService } from './storage/storage.service';
 import { validateEnv } from '../config/env.validation';
@@ -36,7 +36,7 @@ describe('provider module wiring', () => {
     service: new (...args: never[]) => object;
   }> = [
     { name: 'RedisModule', module: RedisModule, service: RedisService },
-    { name: 'SmsModule', module: SmsModule, service: SmsService },
+    { name: 'WhatsappModule', module: WhatsappModule, service: WhatsAppService },
     { name: 'PaymentsModule', module: PaymentsModule, service: PaymentsService },
     { name: 'LogisticsModule', module: LogisticsModule, service: LogisticsService },
     { name: 'StorageModule', module: StorageModule, service: StorageService },
@@ -70,7 +70,7 @@ describe('provider module wiring', () => {
     compiled = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnv }),
-        SmsModule,
+        WhatsappModule,
         PaymentsModule,
         LogisticsModule,
         StorageModule,
@@ -78,7 +78,7 @@ describe('provider module wiring', () => {
       ],
     }).compile();
 
-    expect(compiled.get(SmsService)).toBeInstanceOf(SmsService);
+    expect(compiled.get(WhatsAppService)).toBeInstanceOf(WhatsAppService);
     expect(compiled.get(PaymentsService)).toBeInstanceOf(PaymentsService);
     expect(compiled.get(LogisticsService)).toBeInstanceOf(LogisticsService);
     expect(compiled.get(StorageService)).toBeInstanceOf(StorageService);

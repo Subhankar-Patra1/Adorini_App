@@ -372,26 +372,4 @@ describe('WebhooksService', () => {
       });
     });
   });
-
-  describe('handleMsg91', () => {
-    it('records a delivery report with no state change', async () => {
-      const outcome = await service.handleMsg91({ requestId: 'req-1' });
-
-      expect(outcome).toBe('processed');
-      expect(idempotency.ingest).toHaveBeenCalledWith(
-        expect.objectContaining({ provider: WebhookProvider.MSG91, eventId: 'req-1' }),
-        expect.any(Function),
-      );
-      expect(transitions.transition).not.toHaveBeenCalled();
-    });
-
-    it('falls back to message_id for de-duplication', async () => {
-      await service.handleMsg91({ message_id: 'msg-9' });
-
-      expect(idempotency.ingest).toHaveBeenCalledWith(
-        expect.objectContaining({ eventId: 'msg-9' }),
-        expect.any(Function),
-      );
-    });
-  });
 });

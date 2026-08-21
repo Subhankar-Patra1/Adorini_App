@@ -10,12 +10,12 @@ import { OrderStatus } from '../../../common/enums/domain.enums';
 import { Order } from '../../../database/entities/order.entity';
 import { User } from '../../../database/entities/user.entity';
 import { LogisticsService } from '../../../providers/logistics/logistics.service';
-import { SmsService } from '../../../providers/sms/sms.service';
+import { WhatsAppService } from '../../../providers/whatsapp/whatsapp.service';
 
 const CONFIG: Record<string, unknown> = {
   DELIVERY_RESPONSE_WINDOW_HOURS: 24,
   MAX_DELIVERY_ATTEMPTS: 3,
-  MSG91_DELIVERY_RETRY_TEMPLATE: 'adorini_delivery_retry',
+  WHATSAPP_DELIVERY_RETRY_TEMPLATE: 'adorini_delivery_retry',
 };
 
 function order(overrides: Partial<Order> = {}): Order {
@@ -39,7 +39,7 @@ describe('DeliveryFailureService', () => {
   let transitions: { transition: jest.Mock };
   let ordersService: { performCancellation: jest.Mock };
   let logistics: { requestReattempt: jest.Mock };
-  let sms: { whatsappNotify: jest.Mock };
+  let whatsapp: { notifyTemplate: jest.Mock };
   let manager: { findOne: jest.Mock; save: jest.Mock };
   let dataSource: { transaction: jest.Mock };
 
@@ -52,7 +52,7 @@ describe('DeliveryFailureService', () => {
     transitions = { transition: jest.fn().mockResolvedValue({ order: order(), changed: true }) };
     ordersService = { performCancellation: jest.fn() };
     logistics = { requestReattempt: jest.fn().mockResolvedValue(undefined) };
-    sms = { whatsappNotify: jest.fn().mockResolvedValue(undefined) };
+    whatsapp = { notifyTemplate: jest.fn().mockResolvedValue(undefined) };
     manager = { findOne: jest.fn(), save: jest.fn((_e: unknown, v: unknown) => v) };
     dataSource = { transaction: jest.fn((cb: (m: typeof manager) => unknown) => cb(manager)) };
 
@@ -64,7 +64,7 @@ describe('DeliveryFailureService', () => {
         { provide: OrderTransitionService, useValue: transitions },
         { provide: OrdersService, useValue: ordersService },
         { provide: LogisticsService, useValue: logistics },
-        { provide: SmsService, useValue: sms },
+        { provide: WhatsAppService, useValue: whatsapp },
         { provide: DataSource, useValue: dataSource },
         { provide: ConfigService, useValue: { get: jest.fn((k: string) => CONFIG[k]) } },
       ],
@@ -108,23 +108,24 @@ describe('DeliveryFailureService', () => {
     it('sends the WhatsApp template with the order number and window', async () => {
       await service.promptBuyer(order({ deliveryAttempts: 1 }));
 
-      expect(sms.whatsappNotify).toHaveBeenCalledWith('919876543210', 'adorini_delivery_retry', {
-        body_1: 'ADR-1',
-        body_2: '24',
-      });
+      expect(whatsapp.notifyTemplate).toHaveBeenCalledWith(
+        '919876543210',
+        'adorini_delivery_retry',
+        { body_1: 'ADR-1', body_2: '24' },
+      );
     });
 
     it('sends nothing when the courier has no attempts left', async () => {
       // Offering a retry the courier will refuse would be a promise we cannot keep.
       await service.promptBuyer(order({ deliveryAttempts: 3 }));
 
-      expect(sms.whatsappNotify).not.toHaveBeenCalled();
+      expect(whatsapp.notifyTemplate).not.toHaveBeenCalled();
     });
 
     it('swallows a messaging failure rather than failing the webhook', async () => {
       // This runs after the webhook transaction committed; throwing here would
       // turn a correctly-recorded failure into a non-2xx Delhivery redelivers.
-      sms.whatsappNotify.mockRejectedValue(new Error('MSG91 down'));
+      whatsapp.notifyTemplate.mockRejectedValue(new Error('Meta unreachable'));
 
       await expect(service.promptBuyer(order())).resolves.toBeUndefined();
     });

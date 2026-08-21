@@ -21,11 +21,7 @@ import { Public } from '../../../common/decorators/public.decorator';
 import { WebhooksService, type WebhookOutcome } from '../services/webhooks.service';
 import type { Env } from '../../../config/env.validation';
 import { PaymentsService } from '../../../providers/payments/payments.service';
-import {
-  cashfreeWebhookSchema,
-  delhiveryWebhookSchema,
-  msg91WebhookSchema,
-} from '../dto/webhook-payloads.dto';
+import { cashfreeWebhookSchema, delhiveryWebhookSchema } from '../dto/webhook-payloads.dto';
 
 const TOKEN_HEADER = 'x-adorini-webhook-token';
 
@@ -33,12 +29,14 @@ const TOKEN_HEADER = 'x-adorini-webhook-token';
  * Inbound provider callbacks.
  *
  * `@Public()` is what lets providers reach these routes at all — authentication
- * is global and fail-closed (ADR-013), and Cashfree, Delhivery and MSG91
- * obviously cannot present an Adorini bearer token. These endpoints are
- * emphatically *not* unauthenticated, though: each authenticates the caller
- * itself, per provider, using the mechanism that provider actually supports —
- * an HMAC signature over the raw body for Cashfree, a shared secret header for
- * the two that do not sign their callbacks.
+ * is global and fail-closed (ADR-013), and Cashfree and Delhivery obviously
+ * cannot present an Adorini bearer token. These endpoints are emphatically
+ * *not* unauthenticated, though: each authenticates the caller itself, per
+ * provider, using the mechanism that provider actually supports — an HMAC
+ * signature over the raw body for Cashfree, a shared secret header for
+ * Delhivery, which does not sign its callbacks. (Meta's WhatsApp webhook lives
+ * on its own controller — `whatsapp-bot.controller.ts` — since it is also
+ * HMAC-signed but under a different scheme.)
  *
  * Excluded from Swagger deliberately: these are not part of the Flutter client's
  * contract, and publishing their shapes in a doc the app fetches would only
@@ -99,18 +97,6 @@ export class WebhooksController {
 
     const payload = delhiveryWebhookSchema.parse(body);
     return { outcome: await this.webhooks.handleDelhivery(payload) };
-  }
-
-  @Post('msg91')
-  @HttpCode(HttpStatus.OK)
-  async msg91(
-    @Body() body: unknown,
-    @Headers(TOKEN_HEADER) token: string | undefined,
-  ): Promise<{ outcome: WebhookOutcome }> {
-    this.assertSharedSecret(token, this.config.get('MSG91_WEBHOOK_TOKEN', { infer: true }));
-
-    const payload = msg91WebhookSchema.parse(body);
-    return { outcome: await this.webhooks.handleMsg91(payload) };
   }
 
   /**

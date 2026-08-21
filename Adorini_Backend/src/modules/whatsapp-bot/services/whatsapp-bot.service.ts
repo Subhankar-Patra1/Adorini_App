@@ -70,12 +70,12 @@ export class WhatsappBotService {
   async handleInbound(message: InboundMessage): Promise<InboundReplyOutcome> {
     /**
      * De-duplicated through the same machinery as every provider webhook
-     * (@GUARD Risk #1's mechanism): MSG91 redelivers inbound messages on
+     * (@GUARD Risk #1's mechanism): Meta redelivers inbound messages on
      * non-2xx, and a replayed "yes" must not book a second courier reattempt.
      */
     const ingest = await this.idempotency.ingest(
       {
-        provider: WebhookProvider.MSG91,
+        provider: WebhookProvider.WHATSAPP,
         eventId: `inbound:${message.messageId}`,
         eventType: 'WHATSAPP_INBOUND',
         payload: { from: message.fromPhone, text: message.text },
@@ -115,7 +115,7 @@ export class WhatsappBotService {
       return 'unrecognised';
     }
 
-    // Normalised to the exact form `users.phone` holds; MSG91 may report the
+    // Normalised to the exact form `users.phone` holds; Meta may report the
     // sender with a `+` or other punctuation.
     const phone = normalisePhone(message.fromPhone);
 

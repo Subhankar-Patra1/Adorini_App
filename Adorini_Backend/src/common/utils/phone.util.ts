@@ -8,7 +8,7 @@ const INDIAN_MOBILE = /^[6-9]\d{9}$/;
 
 /**
  * Normalises a phone number to E.164 without the leading `+` — the exact form
- * stored in `users.phone` and sent to MSG91 (e.g. `919876543210`).
+ * stored in `users.phone` and sent to Meta's WhatsApp Cloud API (e.g. `919876543210`).
  *
  * This must be applied at every boundary where a phone enters the system.
  * `users.phone` is UNIQUE, so if `+91 98765 43210`, `09876543210` and
